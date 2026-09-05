@@ -1,0 +1,6 @@
+{
+  "name": "TeleDoc Telemedicine Platform",
+  "description": "Comprehensive telemedicine web application for patient consultations, doctor scheduling, video appointments, digital prescriptions, health records, and administrative analytics.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
