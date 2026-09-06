@@ -33,7 +33,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   onClose,
   onBookingSuccess,
 }) => {
-  const { appointments, bookAppointment, setActiveVideoAppointment } = useApp();
+  const { appointments, bookAppointment, setActiveVideoAppointment, prefilledBookingData, patientProfile } = useApp();
 
   // Booking step: 1 = slot & intake, 2 = payment & checkout, 3 = confirmation
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -51,12 +51,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   });
 
   const [selectedSlot, setSelectedSlot] = useState<string>('10:00 AM');
-  const [reason, setReason] = useState('Routine consultation & general checkup');
-  const [symptoms, setSymptoms] = useState('');
+  const [patientName, setPatientName] = useState(prefilledBookingData?.patientName || patientProfile?.name || 'Anjali Sharma');
+  const [patientEmail, setPatientEmail] = useState(prefilledBookingData?.patientEmail || patientProfile?.email || 'anjali.sharma@example.com');
+  const [reason, setReason] = useState(prefilledBookingData?.reason || 'Routine consultation & general checkup');
+  const [symptoms, setSymptoms] = useState(prefilledBookingData?.symptoms || '');
   const [paymentMethod, setPaymentMethod] = useState<'Credit/Debit Card' | 'UPI' | 'Net Banking'>('Credit/Debit Card');
 
   // Simulated Payment Form fields
-  const [cardHolder, setCardHolder] = useState('Anjali Sharma');
+  const [cardHolder, setCardHolder] = useState(prefilledBookingData?.patientName || patientProfile?.name || 'Anjali Sharma');
   const [cardNumber, setCardNumber] = useState('4242 •••• •••• 4242');
   const [cardExpiry, setCardExpiry] = useState('12/28');
   const [cardCvc, setCardCvc] = useState('987');
@@ -196,6 +198,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         symptoms,
         paymentMethod,
         amount: doctor.consultationFee,
+        patientName,
+        patientEmail,
       });
 
       setIsProcessing(false);
@@ -225,10 +229,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md overflow-y-auto">
       <div
         id="booking-modal-container"
-        className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-8"
+        className="relative w-full max-w-xl bg-white/95 rounded-3xl shadow-2xl border border-white/90 overflow-hidden my-8 backdrop-blur-2xl"
       >
         {/* Header */}
         <div className="bg-slate-900 text-white p-5 flex items-center justify-between">

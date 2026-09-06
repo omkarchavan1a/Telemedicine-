@@ -28,32 +28,32 @@ export const SecurityCheckpoint: React.FC<SecurityCheckpointProps> = ({ required
 
       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-3 border">
         <Lock className="w-3.5 h-3.5" />
-        <span>{isDoctor ? 'Doctor Provider Authentication Required' : 'Administrative Clearance Gate'}</span>
+        <span>{isDoctor ? 'Doctor Provider Sign In Required' : 'Administrative Sign In Required'}</span>
       </div>
 
       <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">
-        {isDoctor ? 'Healthcare Provider Security Verification' : 'Administrative Governance Portal'}
+        {isDoctor ? 'Healthcare Provider Portal' : 'Administrative Governance Portal'}
       </h2>
 
       <p className="text-sm text-slate-600 max-w-lg mx-auto mb-6 leading-relaxed">
         {isDoctor
-          ? 'To access patient consultation queues, interactive video examination rooms, and official e-prescription pads, healthcare providers must authenticate their medical credentials.'
-          : 'Administrative oversight over financial commission reporting, doctor onboarding credential verifications, and dispute arbitration requires verified admin clearance.'}
+          ? 'To access patient consultation queues, interactive video examination rooms, and official e-prescription pads, healthcare providers must authenticate their credentials.'
+          : 'Administrative oversight over consultations, doctor onboarding credential verifications, and platform operations requires verified admin sign-in.'}
       </p>
 
-      {/* Security Pillars Checklist */}
+      {/* Features Checklist */}
       <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-left text-xs text-slate-700 max-w-md mx-auto mb-6 space-y-2">
         <div className="flex items-center gap-2">
           <CheckCircle2 className={`w-4 h-4 shrink-0 ${isDoctor ? 'text-blue-600' : 'text-purple-600'}`} />
-          <span>HIPAA & SOC-2 Compliant Role-Based Access Control</span>
+          <span>{isDoctor ? 'Access patient clinical charts and scheduled appointments' : 'Oversee doctor onboarding and credential verifications'}</span>
         </div>
         <div className="flex items-center gap-2">
           <CheckCircle2 className={`w-4 h-4 shrink-0 ${isDoctor ? 'text-blue-600' : 'text-purple-600'}`} />
-          <span>Encrypted Clinical Session & Audit Log Tracking</span>
+          <span>{isDoctor ? 'Conduct telemedicine video consultations and e-prescriptions' : 'Monitor platform metrics and department directories'}</span>
         </div>
         <div className="flex items-center gap-2">
           <CheckCircle2 className={`w-4 h-4 shrink-0 ${isDoctor ? 'text-blue-600' : 'text-purple-600'}`} />
-          <span>Self-service Registration with Medical Verification Form</span>
+          <span>{isDoctor ? 'Manage personal schedule and consultation rates' : 'Manage provider listings and administrative settings'}</span>
         </div>
       </div>
 
@@ -68,7 +68,7 @@ export const SecurityCheckpoint: React.FC<SecurityCheckpointProps> = ({ required
           }`}
         >
           <Lock className="w-4 h-4" />
-          <span>Security Sign In ({isDoctor ? 'Doctor' : 'Admin'})</span>
+          <span>Sign In ({isDoctor ? 'Doctor' : 'Admin'})</span>
         </button>
 
         <button
@@ -90,7 +90,7 @@ export const SecurityCheckpoint: React.FC<SecurityCheckpointProps> = ({ required
           className="text-xs text-slate-500 hover:text-slate-800 transition-colors inline-flex items-center gap-1.5 font-medium"
         >
           <UserCheck className="w-3.5 h-3.5" />
-          <span>Return to Open Patient Portal (No Login Required)</span>
+          <span>Return to Patient Portal</span>
         </button>
       </div>
     </div>

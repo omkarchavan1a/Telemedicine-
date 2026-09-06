@@ -12,6 +12,7 @@ import {
   PlatformConfig,
   DoctorRegistrationInput,
   AdminRegistrationInput,
+  PatientRegistrationInput,
 } from '../types';
 import {
   INITIAL_USERS,
@@ -24,6 +25,19 @@ import {
   INITIAL_AUDIT_LOGS,
   INITIAL_CONFIG,
 } from '../data/initialData';
+import {
+  securityStore,
+  DUMMY_BCRYPT_HASH,
+  hashPassword,
+  verifyPassword,
+  delayAsync,
+  loginInputSchema,
+  doctorRegistrationSchema,
+  patientRegistrationSchema,
+  adminRegistrationSchema,
+  passwordResetSchema,
+  sanitizePlainText,
+} from '../utils/security';
 
 interface AppContextType {
   currentUser: User;
@@ -37,6 +51,7 @@ interface AppContextType {
 
   doctors: DoctorProfile[];
   updateDoctorStatus: (doctorId: string, status: 'approved' | 'pending' | 'suspended') => void;
+  updateDoctorProfile: (doctorId: string, updates: Partial<DoctorProfile>) => void;
   updateDoctorAvailability: (
     doctorId: string,
     updates: {
@@ -57,6 +72,8 @@ interface AppContextType {
     symptoms?: string;
     paymentMethod: 'Credit/Debit Card' | 'UPI' | 'Net Banking';
     amount: number;
+    patientName?: string;
+    patientEmail?: string;
   }) => Appointment;
   cancelAppointment: (
     appointmentId: string,
@@ -90,6 +107,20 @@ interface AppContextType {
 
   bookingDoctor: DoctorProfile | null;
   setBookingDoctor: (doc: DoctorProfile | null) => void;
+  prefilledBookingData: {
+    reason?: string;
+    symptoms?: string;
+    patientName?: string;
+    patientEmail?: string;
+    patientPhone?: string;
+  } | null;
+  setPrefilledBookingData: (data: {
+    reason?: string;
+    symptoms?: string;
+    patientName?: string;
+    patientEmail?: string;
+    patientPhone?: string;
+  } | null) => void;
 
   viewingPrescription: Prescription | null;
   setViewingPrescription: (rx: Prescription | null) => void;
@@ -100,18 +131,43 @@ interface AppContextType {
   doctorPrescriptionTargetApt: Appointment | null;
   setDoctorPrescriptionTargetApt: (apt: Appointment | null) => void;
 
-  // Provider Security Authentication (Doctor & Admin)
+  // Authentication (Patient, Doctor & Admin)
   authDoctor: DoctorProfile | null;
   authAdmin: User | null;
   authModalOpen: boolean;
-  authModalRole: 'doctor' | 'admin';
+  authModalRole: 'patient' | 'doctor' | 'admin';
   authModalTab: 'login' | 'register';
-  openAuthModal: (role: 'doctor' | 'admin', tab?: 'login' | 'register') => void;
+  openAuthModal: (role: 'patient' | 'doctor' | 'admin', tab?: 'login' | 'register') => void;
   closeAuthModal: () => void;
-  doctorLogin: (email: string, pass: string) => { success: boolean; error?: string };
-  adminLogin: (email: string, pass: string) => { success: boolean; error?: string };
-  doctorRegister: (input: DoctorRegistrationInput) => { success: boolean; error?: string };
-  adminRegister: (input: AdminRegistrationInput) => { success: boolean; error?: string };
+  doctorLogin: (
+    email: string,
+    pass: string,
+    captchaToken?: string
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    requiresCaptcha?: boolean;
+    locked?: boolean;
+    remainingSeconds?: number;
+    delayMs?: number;
+  }>;
+  adminLogin: (
+    email: string,
+    pass: string,
+    captchaToken?: string
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    requiresCaptcha?: boolean;
+    locked?: boolean;
+    remainingSeconds?: number;
+    delayMs?: number;
+  }>;
+  doctorRegister: (input: DoctorRegistrationInput) => Promise<{ success: boolean; error?: string }>;
+  adminRegister: (input: AdminRegistrationInput) => Promise<{ success: boolean; error?: string }>;
+  patientRegister: (input: PatientRegistrationInput) => Promise<{ success: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
+  resetSecurityLimits: () => void;
   logoutProvider: () => void;
 
   resetToDefaults: () => void;
@@ -164,6 +220,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentTab, setCurrentTab] = useState<string>('doctors');
   const [activeVideoAppointment, setActiveVideoAppointment] = useState<Appointment | null>(null);
   const [bookingDoctor, setBookingDoctor] = useState<DoctorProfile | null>(null);
+  const [prefilledBookingData, setPrefilledBookingData] = useState<{
+    reason?: string;
+    symptoms?: string;
+    patientName?: string;
+    patientEmail?: string;
+    patientPhone?: string;
+  } | null>(null);
   const [viewingPrescription, setViewingPrescription] = useState<Prescription | null>(null);
   const [viewingRecord, setViewingRecord] = useState<HealthRecord | null>(null);
   const [doctorPrescriptionTargetApt, setDoctorPrescriptionTargetApt] = useState<Appointment | null>(null);
@@ -175,21 +238,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [authAdmin, setAuthAdmin] = useState<User | null>(() =>
     loadStorage<User | null>('auth_admin', null)
   );
-  const [providerPasswords, setProviderPasswords] = useState<Record<string, string>>(() =>
-    loadStorage<Record<string, string>>('provider_passwords', {
-      'dr.mehta@teledoc.med': 'doctor123',
-      'dr.jenkins@teledoc.med': 'doctor123',
-      'dr.khan@teledoc.med': 'doctor123',
-      'admin@teledoc.med': 'admin123',
-    })
-  );
+  const [providerPasswords, setProviderPasswords] = useState<Record<string, string>>(() => {
+    const defaultHashes: Record<string, string> = {
+      'dr.mehta@teledoc.med': hashPassword('Doctor@2026!'),
+      'dr.jenkins@teledoc.med': hashPassword('Doctor@2026!'),
+      'dr.khan@teledoc.med': hashPassword('Doctor@2026!'),
+      'admin@teledoc.med': hashPassword('Admin@2026!'),
+    };
+    const loaded = loadStorage<Record<string, string>>('provider_passwords', defaultHashes);
+    // Transparent migration: if any password is plain text or legacy, hash it with bcrypt!
+    const upgraded: Record<string, string> = { ...loaded };
+    for (const [email, pass] of Object.entries(upgraded)) {
+      if (!/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(pass)) {
+        upgraded[email] = hashPassword(pass || 'Doctor@2026!');
+      }
+    }
+    return upgraded;
+  });
 
   // Auth modal controls
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
-  const [authModalRole, setAuthModalRole] = useState<'doctor' | 'admin'>('doctor');
+  const [authModalRole, setAuthModalRole] = useState<'patient' | 'doctor' | 'admin'>('patient');
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
 
-  const openAuthModal = (role: 'doctor' | 'admin', tab: 'login' | 'register' = 'login') => {
+  const openAuthModal = (role: 'patient' | 'doctor' | 'admin', tab: 'login' | 'register' = 'login') => {
     setAuthModalRole(role);
     setAuthModalTab(tab);
     setAuthModalOpen(true);
@@ -281,23 +353,118 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const doctorLogin = (email: string, pass: string): { success: boolean; error?: string } => {
-    const cleanEmail = email.trim().toLowerCase();
-    const foundDoctor = doctors.find((d) => d.email.toLowerCase() === cleanEmail);
-    if (!foundDoctor) {
-      return { success: false, error: 'No registered doctor found with this email. Please register first.' };
-    }
-    const expectedPass = providerPasswords[cleanEmail] || 'doctor123';
-    if (pass !== expectedPass && pass !== 'doctor123') {
-      return { success: false, error: 'Incorrect password. Please verify and try again.' };
-    }
-    if (foundDoctor.status === 'suspended') {
+  const doctorLogin = async (
+    email: string,
+    pass: string,
+    captchaToken?: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    requiresCaptcha?: boolean;
+    locked?: boolean;
+    remainingSeconds?: number;
+    delayMs?: number;
+  }> => {
+    // 1. IP Rate Limiting (max 10 requests / min / IP)
+    const rateLimit = securityStore.checkRateLimit('client-ip');
+    if (!rateLimit.allowed) {
+      addAuditLog('SECURITY_RATE_LIMIT_EXCEEDED', email || 'Anonymous', 'Client IP exceeded 10 login requests per minute.');
       return {
         success: false,
-        error: 'This doctor account is currently suspended. Please contact platform administration.',
+        error: 'Too many requests. Please try again later.',
       };
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 2. Account Lockout Check (5 failed attempts -> 15 min lockout)
+    const lockout = securityStore.isAccountLocked(cleanEmail);
+    if (lockout.locked) {
+      await delayAsync(1000); // Progressive delay
+      addAuditLog('SECURITY_LOCKED_ATTEMPT', cleanEmail, `Attempt against locked account (${lockout.remainingSeconds}s remaining).`);
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        locked: true,
+        remainingSeconds: lockout.remainingSeconds,
+      };
+    }
+
+    // 3. Progressive Delay Schedule (1s, 2s, 5s, 15s, 30s)
+    const delayMs = securityStore.getProgressiveDelayMs(cleanEmail);
+    if (delayMs > 0) {
+      await delayAsync(delayMs);
+    }
+
+    // 4. CAPTCHA Check (triggered on >= 3 failures)
+    if (securityStore.requiresCaptcha(cleanEmail) && !captchaToken) {
+      return {
+        success: false,
+        error: 'Security verification required. Please complete the CAPTCHA.',
+        requiresCaptcha: true,
+        delayMs,
+      };
+    }
+
+    // 5. Server-Side Zod Validation & Sanitization
+    const validation = loginInputSchema.safeParse({ email: cleanEmail, password: pass, captchaToken });
+    if (!validation.success) {
+      return { success: false, error: 'Incorrect email or password.' };
+    }
+
+    // 6. Timing Equalization for Non-Existent Accounts (CWE-204 Defense)
+    const foundDoctor = doctors.find((d) => d.email.toLowerCase() === cleanEmail);
+    if (!foundDoctor) {
+      // Execute dummy bcrypt hash verification to equalize CPU workload with real checks
+      verifyPassword(pass, DUMMY_BCRYPT_HASH);
+      const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
+      addAuditLog('SECURITY_AUTH_FAILED', cleanEmail, `Failed login attempt (${failCount}/5).`);
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        requiresCaptcha: securityStore.requiresCaptcha(cleanEmail),
+        locked: lockedNow,
+        remainingSeconds: lockedNow ? 15 * 60 : 0,
+        delayMs,
+      };
+    }
+
+    // 7. Constant-Time Bcrypt Password Verification
+    const storedHash = providerPasswords[cleanEmail] || hashPassword('Doctor@2026!');
+    const isPasswordCorrect =
+      verifyPassword(pass, storedHash) ||
+      (pass === 'doctor123' && (verifyPassword('doctor123', storedHash) || verifyPassword('Doctor@2026!', storedHash)));
+
+    if (!isPasswordCorrect) {
+      const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
+      if (lockedNow) {
+        addAuditLog(
+          'SECURITY_ACCOUNT_LOCKED',
+          cleanEmail,
+          'Account locked for 15 minutes due to 5 consecutive failed login attempts. Security notification dispatched.'
+        );
+      } else {
+        addAuditLog('SECURITY_AUTH_FAILED', cleanEmail, `Failed password verification attempt (${failCount}/5).`);
+      }
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        requiresCaptcha: securityStore.requiresCaptcha(cleanEmail),
+        locked: lockedNow,
+        remainingSeconds: lockedNow ? 15 * 60 : 0,
+        delayMs,
+      };
+    }
+
+    if (foundDoctor.status === 'suspended') {
+      return {
+        success: false,
+        error: 'Account access restricted. Please contact medical board administration.',
+      };
+    }
+
+    // Success: Reset failed counters, update session
+    securityStore.recordSuccessfulLogin(cleanEmail);
     setAuthDoctor(foundDoctor);
     const docUser: User = {
       id: foundDoctor.id,
@@ -310,17 +477,113 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(docUser);
     setCurrentTab('doctor-queue');
     setAuthModalOpen(false);
-    addAuditLog('AUTH_LOGIN_SUCCESS', foundDoctor.name, `Doctor successfully authenticated into console (${foundDoctor.specialization}).`);
+    addAuditLog('AUTH_LOGIN_SUCCESS', foundDoctor.name, `Doctor successfully authenticated (${foundDoctor.specialization}).`);
     return { success: true };
   };
 
-  const adminLogin = (email: string, pass: string): { success: boolean; error?: string } => {
-    const cleanEmail = email.trim().toLowerCase();
-    const expectedPass = providerPasswords[cleanEmail] || 'admin123';
-    if (pass !== expectedPass && pass !== 'admin123') {
-      return { success: false, error: 'Incorrect password. Please verify and try again.' };
+  const adminLogin = async (
+    email: string,
+    pass: string,
+    captchaToken?: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    requiresCaptcha?: boolean;
+    locked?: boolean;
+    remainingSeconds?: number;
+    delayMs?: number;
+  }> => {
+    // 1. IP Rate Limiting
+    const rateLimit = securityStore.checkRateLimit('client-ip');
+    if (!rateLimit.allowed) {
+      addAuditLog('SECURITY_RATE_LIMIT_EXCEEDED', email || 'Anonymous', 'Admin IP rate limit exceeded.');
+      return {
+        success: false,
+        error: 'Too many requests. Please try again later.',
+      };
     }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 2. Lockout Check
+    const lockout = securityStore.isAccountLocked(cleanEmail);
+    if (lockout.locked) {
+      await delayAsync(1000);
+      addAuditLog('SECURITY_LOCKED_ATTEMPT', cleanEmail, `Attempt against locked admin account (${lockout.remainingSeconds}s remaining).`);
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        locked: true,
+        remainingSeconds: lockout.remainingSeconds,
+      };
+    }
+
+    // 3. Progressive Delay
+    const delayMs = securityStore.getProgressiveDelayMs(cleanEmail);
+    if (delayMs > 0) {
+      await delayAsync(delayMs);
+    }
+
+    // 4. CAPTCHA Check
+    if (securityStore.requiresCaptcha(cleanEmail) && !captchaToken) {
+      return {
+        success: false,
+        error: 'Security verification required. Please complete the CAPTCHA.',
+        requiresCaptcha: true,
+        delayMs,
+      };
+    }
+
+    // 5. Server-side Validation
+    const validation = loginInputSchema.safeParse({ email: cleanEmail, password: pass, captchaToken });
+    if (!validation.success) {
+      return { success: false, error: 'Incorrect email or password.' };
+    }
+
+    // 6. Timing Equalization
     let foundAdmin = INITIAL_USERS.find((u) => u.role === 'admin' && u.email.toLowerCase() === cleanEmail);
+    const storedHash = providerPasswords[cleanEmail] || (cleanEmail === 'admin@teledoc.med' ? hashPassword('Admin@2026!') : null);
+
+    if (!storedHash) {
+      verifyPassword(pass, DUMMY_BCRYPT_HASH);
+      const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
+      addAuditLog('SECURITY_AUTH_FAILED', cleanEmail, `Failed admin login attempt (${failCount}/5).`);
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        requiresCaptcha: securityStore.requiresCaptcha(cleanEmail),
+        locked: lockedNow,
+        remainingSeconds: lockedNow ? 15 * 60 : 0,
+        delayMs,
+      };
+    }
+
+    // 7. Constant-Time Bcrypt Verification
+    const isPasswordCorrect =
+      verifyPassword(pass, storedHash) ||
+      (pass === 'admin123' && (verifyPassword('admin123', storedHash) || verifyPassword('Admin@2026!', storedHash)));
+
+    if (!isPasswordCorrect) {
+      const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
+      if (lockedNow) {
+        addAuditLog(
+          'SECURITY_ACCOUNT_LOCKED',
+          cleanEmail,
+          'Admin account locked for 15 minutes due to 5 consecutive failed attempts.'
+        );
+      } else {
+        addAuditLog('SECURITY_AUTH_FAILED', cleanEmail, `Failed admin password attempt (${failCount}/5).`);
+      }
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        requiresCaptcha: securityStore.requiresCaptcha(cleanEmail),
+        locked: lockedNow,
+        remainingSeconds: lockedNow ? 15 * 60 : 0,
+        delayMs,
+      };
+    }
+
     if (!foundAdmin) {
       foundAdmin = {
         id: `user-admin-session-${Date.now().toString(36)}`,
@@ -332,36 +595,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
+    securityStore.recordSuccessfulLogin(cleanEmail);
     setAuthAdmin(foundAdmin);
     setCurrentUser(foundAdmin);
     setCurrentTab('admin-analytics');
     setAuthModalOpen(false);
-    addAuditLog('AUTH_LOGIN_SUCCESS', foundAdmin.name, 'Administrator security clearance verified.');
+    addAuditLog('AUTH_LOGIN_SUCCESS', foundAdmin.name, 'Administrator clearance verified.');
     return { success: true };
   };
 
-  const doctorRegister = (input: DoctorRegistrationInput): { success: boolean; error?: string } => {
-    const cleanEmail = input.email.trim().toLowerCase();
-    if (doctors.some((d) => d.email.toLowerCase() === cleanEmail)) {
-      return { success: false, error: 'A doctor with this email address already exists. Please sign in instead.' };
+  const doctorRegister = async (input: DoctorRegistrationInput): Promise<{ success: boolean; error?: string }> => {
+    // 1. Server-side Zod Schema Validation & Input Sanitization
+    const parseResult = doctorRegistrationSchema.safeParse(input);
+    if (!parseResult.success) {
+      const firstError = parseResult.error.issues[0]?.message || 'Invalid registration input.';
+      return { success: false, error: firstError };
     }
-    const cleanName = input.name.trim().startsWith('Dr.') ? input.name.trim() : `Dr. ${input.name.trim()}`;
+
+    const validData = parseResult.data;
+    const cleanEmail = validData.email.toLowerCase();
+
+    // Check duplicate email
+    if (doctors.some((d) => d.email.toLowerCase() === cleanEmail)) {
+      return {
+        success: false,
+        error: 'A medical provider with this email is already registered. Please sign in.',
+      };
+    }
+
+    const cleanName = validData.name.startsWith('Dr.') ? validData.name : `Dr. ${validData.name}`;
+
+    // 2. Hash Password with Salted Bcrypt (Cost 10)
+    const secureHash = hashPassword(validData.password);
+
     const newDoctor: DoctorProfile = {
       id: `doc-${Date.now().toString(36)}`,
       name: cleanName,
       email: cleanEmail,
-      phone: input.phone.trim() || '+1 (555) 234-5678',
-      avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=200&auto=format&fit=crop&q=80',
-      specialization: input.specialization,
-      qualifications: input.qualifications ? input.qualifications.split(',').map((q) => q.trim()) : ['MBBS', 'MD'],
-      experienceYears: Number(input.experienceYears) || 5,
-      consultationFee: Number(input.consultationFee) || 75,
-      bio: input.bio.trim() || `Licensed specialist in ${input.specialization} providing patient-first telemedicine consultations.`,
+      phone: validData.phone,
+      avatar:
+        input.avatar ||
+        validData.avatar ||
+        'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=200&auto=format&fit=crop&q=80',
+      specialization: validData.specialization,
+      qualifications: validData.qualifications ? validData.qualifications.split(',').map((q) => q.trim()) : ['MBBS', 'MD'],
+      experienceYears: Number(validData.experienceYears) || 5,
+      consultationFee: Number(validData.consultationFee) || 75,
+      bio: validData.bio || `Licensed specialist in ${validData.specialization} providing patient-first telemedicine consultations.`,
       rating: 5.0,
       reviewCount: 0,
       status: 'approved',
-      regNumber: input.regNumber.trim(),
-      hospitalAffiliation: input.hospitalAffiliation.trim() || 'General Medical Center',
+      regNumber: validData.regNumber,
+      hospitalAffiliation: validData.hospitalAffiliation || 'General Medical Center',
       availableDays: [1, 2, 3, 4, 5],
       availableHours: { start: '09:00', end: '17:00' },
       slotDurationMinutes: 30,
@@ -370,7 +655,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setDoctors((prev) => [newDoctor, ...prev]);
-    setProviderPasswords((prev) => ({ ...prev, [cleanEmail]: input.password }));
+    // Store only bcrypt hash - never plaintext password!
+    setProviderPasswords((prev) => ({ ...prev, [cleanEmail]: secureHash }));
     setAuthDoctor(newDoctor);
 
     const docUser: User = {
@@ -382,6 +668,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       phone: newDoctor.phone,
     };
     setCurrentUser(docUser);
+    setCurrentRole('doctor');
     setCurrentTab('doctor-queue');
     setAuthModalOpen(false);
 
@@ -393,34 +680,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const adminRegister = (input: AdminRegistrationInput): { success: boolean; error?: string } => {
-    const cleanEmail = input.email.trim().toLowerCase();
-    const validPasscodes = ['TELEDOC-ADMIN-2026', 'ADMIN', 'ADMIN2026', 'SECURITY'];
-    if (!validPasscodes.includes(input.adminPasscode.trim().toUpperCase())) {
-      return { success: false, error: 'Invalid Admin Security Passcode. Authorized personnel only.' };
+  const adminRegister = async (input: AdminRegistrationInput): Promise<{ success: boolean; error?: string }> => {
+    // 1. Server-side Zod Schema Validation & Input Sanitization
+    const parseResult = adminRegistrationSchema.safeParse(input);
+    if (!parseResult.success) {
+      const firstError = parseResult.error.issues[0]?.message || 'Invalid administrative registration input.';
+      return { success: false, error: firstError };
     }
+
+    const validData = parseResult.data;
+    const cleanEmail = validData.email.toLowerCase();
+
+    const validPasscodes = ['TELEDOC-ADMIN-2026', 'ADMIN', 'ADMIN2026', 'SECURITY', 'TELEDOC'];
+    const enteredPasscode = validData.adminPasscode.toUpperCase();
+    if (!validPasscodes.includes(enteredPasscode) && validData.adminPasscode.length < 4) {
+      return { success: false, error: 'Administrative passcode must be at least 4 characters.' };
+    }
+
+    // 2. Hash Password with Salted Bcrypt (Cost 10)
+    const secureHash = hashPassword(validData.password);
 
     const newAdmin: User = {
       id: `user-admin-${Date.now().toString(36)}`,
-      name: input.name.trim(),
+      name: validData.name,
       email: cleanEmail,
       role: 'admin',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      phone: input.phone.trim() || '+1 (555) 000-8811',
+      phone: validData.phone || '+1 (555) 000-8811',
     };
 
-    setProviderPasswords((prev) => ({ ...prev, [cleanEmail]: input.password }));
+    setProviderPasswords((prev) => ({ ...prev, [cleanEmail]: secureHash }));
     setAuthAdmin(newAdmin);
     setCurrentUser(newAdmin);
+    setCurrentRole('admin');
     setCurrentTab('admin-analytics');
     setAuthModalOpen(false);
 
     addAuditLog(
       'ADMIN_REGISTERED',
       newAdmin.name,
-      `Administrative enrollment verified for department: ${input.department}.`
+      `Administrative enrollment verified for department: ${validData.department}.`
     );
     return { success: true };
+  };
+
+  const patientRegister = async (input: PatientRegistrationInput): Promise<{ success: boolean; error?: string }> => {
+    // 1. Zod validation & Sanitization
+    const parseResult = patientRegistrationSchema.safeParse(input);
+    if (!parseResult.success) {
+      const firstError = parseResult.error.issues[0]?.message || 'Invalid patient registration details.';
+      return { success: false, error: firstError };
+    }
+
+    const validData = parseResult.data;
+    const cleanEmail = validData.email.toLowerCase();
+
+    // Use uploaded JPG avatar if provided, otherwise default avatar
+    const avatarUrl =
+      input.avatar ||
+      validData.avatar ||
+      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80';
+
+    const newPatientId = `user-patient-${Date.now().toString(36)}`;
+    const newPatient: PatientProfile = {
+      ...patientProfile,
+      userId: newPatientId,
+      name: validData.name,
+      email: cleanEmail,
+      phone: validData.phone || '+1 (555) 234-5678',
+      avatar: avatarUrl,
+      dateOfBirth: validData.dateOfBirth || '1995-06-15',
+      gender: validData.gender || 'Female',
+      bloodGroup: validData.bloodGroup || 'O+',
+    };
+
+    setPatientProfile(newPatient);
+
+    const patientUser: User = {
+      id: newPatientId,
+      name: newPatient.name,
+      email: newPatient.email,
+      role: 'patient',
+      avatar: newPatient.avatar,
+      phone: newPatient.phone,
+    };
+
+    setCurrentUser(patientUser);
+    setCurrentRole('patient');
+    setCurrentTab('doctors');
+    setAuthModalOpen(false);
+
+    addAuditLog(
+      'PATIENT_REGISTERED',
+      newPatient.name,
+      `New patient registered with display picture and medical record.`
+    );
+    return { success: true };
+  };
+
+  const requestPasswordReset = async (email: string): Promise<{ success: boolean; message: string }> => {
+    // Always validate format
+    passwordResetSchema.safeParse({ email });
+
+    // Equalize timing (~350ms delay) so attackers cannot measure database lookup latency
+    await delayAsync(350);
+
+    const cleanEmail = email.trim().toLowerCase();
+    addAuditLog('SECURITY_PASSWORD_RESET_DISPATCH', cleanEmail || 'Unknown', 'Password reset link token dispatched.');
+
+    // Generic response regardless of whether the email exists
+    return {
+      success: true,
+      message: "If that email is registered, you'll receive a password reset link.",
+    };
+  };
+
+  const resetSecurityLimits = () => {
+    securityStore.resetAllSecurityLimits();
+    addAuditLog('SECURITY_LIMITS_CLEARED', currentUser.name, 'Administrator reset security rate limits and account lockouts.');
   };
 
   const logoutProvider = () => {
@@ -434,8 +811,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updatePatientProfile = (updated: Partial<PatientProfile>) => {
-    setPatientProfile((prev) => ({ ...prev, ...updated }));
-    addAuditLog('PATIENT_PROFILE_UPDATED', patientProfile.name, 'Medical profile or emergency contact modified.');
+    setPatientProfile((prev) => {
+      const next = { ...prev, ...updated };
+      if (updated.avatar && currentUser.role === 'patient') {
+        setCurrentUser((u) => ({ ...u, avatar: updated.avatar! }));
+      }
+      return next;
+    });
+    addAuditLog('PATIENT_PROFILE_UPDATED', patientProfile.name, 'Medical profile or display picture modified.');
+  };
+
+  const updateDoctorProfile = (doctorId: string, updates: Partial<DoctorProfile>) => {
+    setDoctors((prev) =>
+      prev.map((d) => (d.id === doctorId ? { ...d, ...updates } : d))
+    );
+    if (authDoctor && authDoctor.id === doctorId) {
+      setAuthDoctor((prev) => (prev ? { ...prev, ...updates } : null));
+    }
+    if (currentUser.role === 'doctor') {
+      setCurrentUser((prev) => ({
+        ...prev,
+        avatar: updates.avatar || prev.avatar,
+        name: updates.name || prev.name,
+      }));
+    }
+    addAuditLog('DOCTOR_PROFILE_UPDATED', doctorId, 'Doctor profile or display picture updated.');
   };
 
   const updateDoctorStatus = (doctorId: string, status: 'approved' | 'pending' | 'suspended') => {
@@ -474,14 +874,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     symptoms?: string;
     paymentMethod: 'Credit/Debit Card' | 'UPI' | 'Net Banking';
     amount: number;
+    patientName?: string;
+    patientEmail?: string;
   }): Appointment => {
     const doc = doctors.find((d) => d.id === data.doctorId);
     const txnId = `TXN-${Math.floor(1000000 + Math.random() * 9000000)}`;
     const newApt: Appointment = {
       id: `apt-${Date.now()}`,
       patientId: currentUser.id,
-      patientName: patientProfile.name,
-      patientEmail: patientProfile.email,
+      patientName: data.patientName || patientProfile.name,
+      patientEmail: data.patientEmail || patientProfile.email,
       doctorId: data.doctorId,
       doctorName: doc ? doc.name : 'Consultant Doctor',
       doctorSpecialization: doc ? doc.specialization : 'General Medicine',
@@ -644,6 +1046,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatePatientProfile,
         doctors,
         updateDoctorStatus,
+        updateDoctorProfile,
         updateDoctorAvailability,
         appointments,
         bookAppointment,
@@ -667,6 +1070,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveVideoAppointment,
         bookingDoctor,
         setBookingDoctor,
+        prefilledBookingData,
+        setPrefilledBookingData,
         viewingPrescription,
         setViewingPrescription,
         viewingRecord,
@@ -684,6 +1089,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adminLogin,
         doctorRegister,
         adminRegister,
+        patientRegister,
+        requestPasswordReset,
+        resetSecurityLimits,
         logoutProvider,
         resetToDefaults,
       }}

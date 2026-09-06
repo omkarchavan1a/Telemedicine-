@@ -191,6 +191,18 @@ export interface DoctorRegistrationInput {
   consultationFee: number;
   qualifications: string;
   bio: string;
+  avatar?: string;
+}
+
+export interface PatientRegistrationInput {
+  name: string;
+  email: string;
+  password?: string;
+  phone?: string;
+  avatar?: string;
+  dateOfBirth?: string;
+  gender?: 'Female' | 'Male' | 'Other';
+  bloodGroup?: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
 }
 
 export interface AdminRegistrationInput {
@@ -201,3 +213,29 @@ export interface AdminRegistrationInput {
   adminPasscode: string;
   department: string;
 }
+
+export interface PatientIntakeData {
+  patientName: string;
+  age: number;
+  gender: 'Female' | 'Male' | 'Other';
+  phone: string;
+  email: string;
+  primaryConcern: string; // e.g. "Severe Migraine & Dizziness"
+  symptomsDescription: string;
+  selectedSymptomTags: string[];
+  duration: '< 24 Hours' | '2 - 7 Days' | '1 - 4 Weeks' | 'Chronic (> 1 Month)';
+  severity: 'Mild' | 'Moderate' | 'Acute / Severe';
+  existingConditions: string[];
+  allergies: string[];
+  priorityPreference: 'best_clinical_match' | 'earliest_slot' | 'budget_friendly';
+}
+
+export interface DoctorRecommendationMatch {
+  doctor: DoctorProfile;
+  matchScore: number; // 0 to 100
+  matchLevel: 'Optimal Match' | 'High Match' | 'Recommended';
+  recommendedSpecialty: string;
+  reasons: string[];
+  isTopRecommendation: boolean;
+}
+

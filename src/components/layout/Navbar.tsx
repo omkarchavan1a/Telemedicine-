@@ -287,8 +287,8 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                 onClick={() => openAuthModal('doctor', 'login')}
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-900 text-white text-xs font-semibold shadow-xs transition-all border border-slate-700/60"
               >
-                <Lock className="w-3.5 h-3.5 text-blue-400" />
-                <span>Provider Access 🔒</span>
+                <Stethoscope className="w-3.5 h-3.5 text-blue-400" />
+                <span>Provider Portal</span>
               </button>
             ) : (
               <button
@@ -322,10 +322,10 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                 >
                   <div className="px-4 py-2 border-b border-slate-100/80">
                     <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Role & Security Access
+                      Select Portal
                     </p>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Doctor & Admin portals require security authentication
+                      Switch between Patient, Doctor, and Administrative views
                     </p>
                   </div>
 
@@ -350,7 +350,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                         </div>
                         <div className="truncate">
                           <div className="font-semibold text-slate-900">Patient Portal</div>
-                          <div className="text-[11px] text-slate-500">Public · No Login Required</div>
+                          <div className="text-[11px] text-slate-500">Open Directory · No Sign In Required</div>
                         </div>
                       </div>
                       {currentRole === 'patient' && (
@@ -385,10 +385,9 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                         <div className="truncate">
                           <div className="font-semibold text-slate-900 flex items-center gap-1.5">
                             <span>Doctor Console</span>
-                            {!authDoctor && <Lock className="w-3 h-3 text-slate-400" />}
                           </div>
                           <div className="text-[11px] text-slate-500 truncate">
-                            {authDoctor ? `${authDoctor.name} (Signed In)` : 'Security Sign In / Register'}
+                            {authDoctor ? `${authDoctor.name} (Signed In)` : 'Sign In or Register'}
                           </div>
                         </div>
                       </div>
@@ -397,8 +396,8 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                           Verified
                         </span>
                       ) : (
-                        <span className="text-[10px] font-semibold text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-md">
-                          Auth 🔒
+                        <span className="text-[10px] font-semibold text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md">
+                          Sign In
                         </span>
                       )}
                     </button>
@@ -428,10 +427,9 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                         <div className="truncate">
                           <div className="font-semibold text-slate-900 flex items-center gap-1.5">
                             <span>Admin Authority</span>
-                            {!authAdmin && <Lock className="w-3 h-3 text-slate-400" />}
                           </div>
                           <div className="text-[11px] text-slate-500 truncate">
-                            {authAdmin ? `${authAdmin.name} (Signed In)` : 'Security Sign In / Register'}
+                            {authAdmin ? `${authAdmin.name} (Signed In)` : 'Sign In or Register'}
                           </div>
                         </div>
                       </div>
@@ -440,8 +438,8 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                           Verified
                         </span>
                       ) : (
-                        <span className="text-[10px] font-semibold text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-md">
-                          Auth 🔒
+                        <span className="text-[10px] font-semibold text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md">
+                          Sign In
                         </span>
                       )}
                     </button>
