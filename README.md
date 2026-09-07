@@ -64,14 +64,49 @@ TeleDoc blends two contemporary digital design paradigms:
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Technology Stack & Architecture Details
 
-- **Framework**: React 18+ with Vite and TypeScript
-- **Styling**: Tailwind CSS with custom Liquid Glass & Bento Morphism design tokens
-- **Icons**: Lucide React
-- **Animations & Effects**: Canvas-Confetti, CSS Keyframe liquid mesh floaters
-- **Audio/Video Processing**: Web Audio API, WebRTC MediaStreams, HTML5 Canvas Rendering
-- **State Management**: React Context with LocalStorage persistence
+TeleDoc is built on a full-stack, secure, and modern TypeScript architecture combining high-performance frontend engineering with clinical-grade backend cryptographic and security infrastructure.
+
+### 🎨 Frontend Architecture & Technologies
+
+| Layer / Capability | Technologies & Libraries | Implementation Details |
+| :--- | :--- | :--- |
+| **Core Framework** | **React 19** (`react` `19.0.1`, `react-dom` `19.0.1`) | Modern functional component architecture, custom hooks, and centralized reactive Context API state management. |
+| **Language** | **TypeScript** (`~5.8.2`) | Strict type safety across clinical interfaces, doctor profiles, payment sessions, prescriptions, and audit logs (`tsc --noEmit`). |
+| **Build Tool & Bundler** | **Vite 6** (`vite` `6.2.3`, `@vitejs/plugin-react`) | High-speed native ES module bundling, rapid cold starts, and optimized production tree-shaking into static assets (`dist/`). |
+| **Styling & Design System** | **Tailwind CSS v4** (`@tailwindcss/vite` `4.1.14`) | Styled via `@import "tailwindcss"` with custom design tokens embodying **Liquid Glass** (frosted blur `backdrop-filter`, 1px specular light refraction borders, ambient gradient mesh orbs) and **Bento Morphism** (asymmetrical modular cards with mathematical corner nesting). |
+| **Motion & Micro-interactions** | **Motion** (`motion` `12.23.24`, `motion/react`) | Declarative page route transitions, modal dialog animations, collapsible drawers, and spring physics. |
+| **Celebratory Feedback** | **Canvas-Confetti** (`canvas-confetti` `1.9.4`) | High-performance particle bursts upon appointment reservation completion and payment authorization. |
+| **Iconography** | **Lucide React** (`lucide-react` `0.546.0`) | Comprehensive medical, hardware, audio/video, clinical status, and navigation SVG icons. |
+| **Hardware Video & Audio** | **WebRTC & MediaDevices API** (`getUserMedia`) | Live camera and microphone capture from user hardware with permission negotiation, device flipping, and stream lifecycle management. |
+| **Screen Sharing** | **Screen Capture API** (`getDisplayMedia`) | Real-time desktop, application, and browser tab sharing during active doctor-patient telemedicine sessions. |
+| **Live Audio Decibel Meter** | **Web Audio API** (`AudioContext`, `AnalyserNode`) | Real-time Fast Fourier Transform (FFT) audio frequency analysis with visual decibel VU meter for pre-call microphone calibration. |
+| **Clinical Telemetry Stream** | **HTML5 Canvas API** (2D Rendering Context) | Custom 30 FPS animated clinical stream rendering dynamic sinusoidal respiration curves, real-time ECG waveform graph, pulse rate, and SpO2 telemetry. |
+| **Speech Guidance** | **Web Speech Synthesis API** (`speechSynthesis`) | Browser-native auditory cues and synthesized clinical recommendations during active tele-consultations. |
+| **Image & Profile Processing** | **HTML5 FileReader & Canvas API** | Client-side JPG avatar processing, strict MIME validation (`image/jpeg`, `.jpg`), dimensions verification, and base64 compression for doctors and patients. |
+| **Schema Validation** | **Zod** (`zod` `4.5.4`) | Runtime schema validation for patient intake, doctor credentials, medical registration numbers, and authentication inputs. |
+
+---
+
+### ⚙️ Backend, Security & Infrastructure Architecture
+
+| Layer / Capability | Technologies & Tools | Implementation Details |
+| :--- | :--- | :--- |
+| **Runtime Environment** | **Node.js** (v20+ ESM) | Native ES Module runtime (`"type": "module"` in `package.json`), running behind an external reverse proxy layer. |
+| **Server Engine** | **Express** (`express` `4.21.2`, `@types/express`) | Server framework configured with `dotenv` (`17.2.3`) and `tsx` (`4.21.0`), supporting custom API routes, health checks, and static asset middleware. |
+| **Server Compilation** | **esbuild** (`esbuild` `0.25.0`) | Bundles server modules into a single, high-performance CommonJS package (`dist/server.cjs`) bypassing Node runtime ESM lookup overhead. |
+| **Network & Port Binding** | **Port 3000** (`0.0.0.0:3000`) | Standard containerized ingress port routing external traffic seamlessly to Vite/Express servers. |
+| **Password Cryptography** | **Bcrypt.js** (`bcryptjs` `3.0.3`) | Secure password hashing using salt rounds (work factor 10), constant-time hash comparisons, and legacy upgrade fallbacks. |
+| **Timing-Attack Defense** | **Dummy Hash Equalization** (CWE-204) | Pre-computed dummy bcrypt hash computation to equalize response times and prevent email enumeration side-channel attacks. |
+| **Role-Based Access Control** | **Multi-Tier RBAC Engine** | Strict separation of concerns across 3 personas: **Patient** (booking, records, prescriptions), **Doctor** (triage queue, schedule, ICD-10 pad), and **Platform Admin** (auditing, refunds, verification). |
+| **Input Sanitization** | **OWASP Top 10 Sanitizer** | Strips dangerous HTML, nested `<script>` tags, `javascript:` pseudoprotocols, and control characters to prevent Cross-Site Scripting (XSS / CWE-79). |
+| **Rate Limiting & Lockouts** | **Sliding Window Rate Limiter** | Enforces max 10 requests/min per IP/account, progressive delay backoff schedule (1s, 2s, 5s, 15s, 30s), and automatic 15-minute account lockout after 5 consecutive failed attempts. |
+| **Adaptive CAPTCHA** | **Security Verification Trigger** | Automated in-app security challenge widget activated dynamically after 3 consecutive failed login attempts. |
+| **Clinical Symptom Triage** | **Deterministic Clinical Matcher** | Rule-based engine mapping multi-category patient symptoms (Cardiovascular, Pediatric, Dermatological, Neurological, Orthopedic, Psychiatric) to clinical specialties with red-flag emergency detection. |
+| **AI Capabilities** | **Google Gen AI SDK** (`@google/genai` `2.4.0`) | Official TypeScript SDK integrated for server-side Gemini intelligence, medical summarization, and clinical decision support. |
+| **Data Persistence Engine** | **Multi-Store Synchronizer** | Reactive client-server state persistence with Browser `localStorage` multi-entity stores for accounts, appointments, prescriptions, audit logs, and security lockouts. |
+| **System Audit Trail** | **Immutable Audit Logger** | Structured audit logging recording timestamped event categories (`AUTH`, `BOOKING`, `PRESCRIPTION`, `REFUND`), actor user IDs, IP signatures, and severity levels. |
 
 ---
 

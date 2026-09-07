@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Appointment } from '../../types';
+import { JpgAvatarUploader } from '../common/JpgAvatarUploader';
 import {
   Users,
   Video,
@@ -14,6 +15,8 @@ import {
   Stethoscope,
   ChevronRight,
   TrendingUp,
+  Camera,
+  X,
 } from 'lucide-react';
 
 export const DoctorDashboard: React.FC = () => {
@@ -26,9 +29,12 @@ export const DoctorDashboard: React.FC = () => {
     setViewingPrescription,
     prescriptions,
     setDoctorPrescriptionTargetApt,
+    updateDoctorProfile,
   } = useApp();
 
   const [queueFilter, setQueueFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [showDoctorDpEdit, setShowDoctorDpEdit] = useState(false);
+  const [dpUpdatedMsg, setDpUpdatedMsg] = useState(false);
 
   // Identify active doctor dynamically
   const activeDoctor =
@@ -76,9 +82,27 @@ export const DoctorDashboard: React.FC = () => {
       {/* Header and Quick Stats */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Stethoscope className="w-6 h-6" />
+          <div className="flex items-center gap-3.5">
+            <div className="relative group shrink-0">
+              {activeDoctor.avatar ? (
+                <img
+                  src={activeDoctor.avatar}
+                  alt={activeDoctor.name}
+                  className="w-14 h-14 rounded-2xl object-cover ring-2 ring-blue-200 shadow-xs"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">
+                  {activeDoctor.name.charAt(0)}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowDoctorDpEdit(!showDoctorDpEdit)}
+                title="Update doctor DP (JPG)"
+                className="absolute -bottom-1 -right-1 bg-blue-600 hover:bg-blue-700 text-white p-1.5 rounded-full shadow-xs transition-transform hover:scale-110"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
             </div>
             <div>
               <div className="text-xs font-bold text-blue-600 uppercase tracking-wider">
@@ -94,12 +118,62 @@ export const DoctorDashboard: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-              Telemedicine Shift: Available for Consultations
-            </span>
+            <button
+              type="button"
+              onClick={() => setShowDoctorDpEdit(!showDoctorDpEdit)}
+              className="px-3 py-1.5 border border-slate-200 hover:border-blue-400 rounded-xl text-xs font-bold text-slate-700 hover:text-blue-700 bg-slate-50 hover:bg-blue-50/50 flex items-center gap-1.5 transition-colors"
+            >
+              <Camera className="w-3.5 h-3.5 text-blue-600" />
+              <span>{showDoctorDpEdit ? 'Hide DP Uploader' : 'Change DP (JPG)'}</span>
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                Telemedicine Shift: Available
+              </span>
+            </div>
           </div>
         </div>
+
+        {/* Expandable Doctor JPG DP Uploader */}
+        {showDoctorDpEdit && (
+          <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Camera className="w-4 h-4 text-blue-600" />
+                  Upload Doctor Display Picture (JPG format only)
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Update your official verified headshot displayed to prospective patients.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDoctorDpEdit(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <JpgAvatarUploader
+              currentAvatar={activeDoctor.avatar}
+              userName={activeDoctor.name}
+              onAvatarChange={(newAvatarUrl) => {
+                updateDoctorProfile(activeDoctor.id, { avatar: newAvatarUrl });
+                setDpUpdatedMsg(true);
+                setTimeout(() => setDpUpdatedMsg(false), 3000);
+              }}
+              label="Select or drag-and-drop a JPG headshot for doctor profile"
+            />
+            {dpUpdatedMsg && (
+              <p className="text-xs font-bold text-emerald-600 mt-2 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Doctor display picture updated successfully!
+              </p>
+            )}
+          </div>
+        )}
 
         {/* 4 Metric Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { DoctorRegistrationInput, AdminRegistrationInput } from '../../types';
+import { DoctorRegistrationInput, AdminRegistrationInput, PatientRegistrationInput } from '../../types';
+import { JpgAvatarUploader } from '../common/JpgAvatarUploader';
 import {
   X,
   Stethoscope,
@@ -32,12 +33,16 @@ export const AuthModal: React.FC = () => {
     adminLogin,
     doctorRegister,
     adminRegister,
+    patientRegister,
     requestPasswordReset,
     doctors,
+    patientProfile,
+    setCurrentRole,
+    setCurrentTab,
   } = useApp();
 
   // Active state within modal
-  const [activeRole, setActiveRole] = useState<'doctor' | 'admin'>(authModalRole);
+  const [activeRole, setActiveRole] = useState<'patient' | 'doctor' | 'admin'>(authModalRole);
   const [activeTab, setActiveTab] = useState<'login' | 'register' | 'forgot'>('login');
 
   // Synchronize when modal opens with new defaults
@@ -76,6 +81,7 @@ export const AuthModal: React.FC = () => {
     email: '',
     password: '',
     phone: '',
+    avatar: '',
     specialization: 'Cardiology',
     regNumber: '',
     hospitalAffiliation: 'TeleDoc Virtual Health Network',
@@ -86,6 +92,19 @@ export const AuthModal: React.FC = () => {
   });
   const [doctorConfirmPass, setDoctorConfirmPass] = useState('');
   const [doctorAgreed, setDoctorAgreed] = useState(false);
+
+  // Patient Registration state
+  const [patientForm, setPatientForm] = useState<PatientRegistrationInput>({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+    avatar: '',
+    dateOfBirth: '1995-06-15',
+    gender: 'Female',
+    bloodGroup: 'O+',
+  });
+  const [patientConfirmPass, setPatientConfirmPass] = useState('');
 
   // Admin Registration state
   const [adminForm, setAdminForm] = useState<AdminRegistrationInput>({
@@ -123,6 +142,16 @@ export const AuthModal: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
+
+    if (activeRole === 'patient') {
+      setLoading(true);
+      setCurrentRole('patient');
+      setCurrentTab('doctors');
+      setLoading(false);
+      closeAuthModal();
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -173,6 +202,7 @@ export const AuthModal: React.FC = () => {
         ...doctorForm,
         name: doctorForm.name.trim(),
         email: doctorForm.email.trim(),
+        avatar: doctorForm.avatar,
         regNumber: doctorForm.regNumber.trim(),
         hospitalAffiliation: doctorForm.hospitalAffiliation?.trim() || 'TeleDoc Virtual Health Network',
         qualifications: doctorForm.qualifications?.trim() || 'MBBS, MD',
@@ -193,6 +223,35 @@ export const AuthModal: React.FC = () => {
     } catch {
       setLoading(false);
       setError('Registration could not be completed. Please verify your details.');
+    }
+  };
+
+  const handlePatientRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+
+    if (patientForm.password && patientConfirmPass && patientForm.password !== patientConfirmPass) {
+      setError('Passwords do not match. Please verify both password entries.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await patientRegister(patientForm);
+      setLoading(false);
+
+      if (!res.success) {
+        setError(res.error || 'Patient registration failed. Please review your entries.');
+      } else {
+        setSuccessMsg('Patient profile created successfully! Display picture saved.');
+        setTimeout(() => {
+          closeAuthModal();
+        }, 1200);
+      }
+    } catch {
+      setLoading(false);
+      setError('An unexpected error occurred during patient registration.');
     }
   };
 
@@ -257,7 +316,9 @@ export const AuthModal: React.FC = () => {
         {/* Header */}
         <div
           className={`p-6 text-white transition-colors ${
-            activeRole === 'doctor'
+            activeRole === 'patient'
+              ? 'bg-gradient-to-r from-emerald-600 via-teal-700 to-cyan-900'
+              : activeRole === 'doctor'
               ? 'bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-900'
               : 'bg-gradient-to-r from-purple-800 via-purple-900 to-slate-950'
           }`}
@@ -265,7 +326,9 @@ export const AuthModal: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-xs flex items-center justify-center border border-white/20">
-                {activeRole === 'doctor' ? (
+                {activeRole === 'patient' ? (
+                  <User className="w-5 h-5 text-emerald-200" />
+                ) : activeRole === 'doctor' ? (
                   <Stethoscope className="w-5 h-5 text-blue-200" />
                 ) : (
                   <ShieldCheck className="w-5 h-5 text-purple-200" />
@@ -273,10 +336,16 @@ export const AuthModal: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-bold">
-                  {activeRole === 'doctor' ? 'Healthcare Provider Portal' : 'Administrative Console'}
+                  {activeRole === 'patient'
+                    ? 'Patient Account & Profile'
+                    : activeRole === 'doctor'
+                    ? 'Healthcare Provider Portal'
+                    : 'Administrative Console'}
                 </h3>
                 <p className="text-xs text-white/80">
-                  {activeRole === 'doctor'
+                  {activeRole === 'patient'
+                    ? 'Register with your JPG photo to book doctors & access health records'
+                    : activeRole === 'doctor'
                     ? 'Restricted to licensed practitioners and clinical specialists'
                     : 'Platform administration and governance'}
                 </p>
@@ -293,8 +362,26 @@ export const AuthModal: React.FC = () => {
             </button>
           </div>
 
-          {/* Role Switcher Pill */}
-          <div className="mt-5 grid grid-cols-2 p-1 bg-black/20 rounded-2xl border border-white/15">
+          {/* Role Switcher Pill - 3 Roles: Patient, Doctor, Platform Admin */}
+          <div className="mt-5 grid grid-cols-3 p-1 bg-black/20 rounded-2xl border border-white/15 gap-1">
+            <button
+              type="button"
+              id="auth-role-select-patient"
+              onClick={() => {
+                setActiveRole('patient');
+                setError(null);
+                setSuccessMsg(null);
+              }}
+              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                activeRole === 'patient'
+                  ? 'bg-white text-emerald-900 shadow-xs'
+                  : 'text-white/80 hover:text-white'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Patient</span>
+            </button>
+
             <button
               type="button"
               id="auth-role-select-doctor"
@@ -303,14 +390,14 @@ export const AuthModal: React.FC = () => {
                 setError(null);
                 setSuccessMsg(null);
               }}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                 activeRole === 'doctor'
                   ? 'bg-white text-blue-900 shadow-xs'
                   : 'text-white/80 hover:text-white'
               }`}
             >
               <Stethoscope className="w-3.5 h-3.5" />
-              <span>Doctor / Specialist</span>
+              <span>Doctor</span>
             </button>
 
             <button
@@ -321,23 +408,27 @@ export const AuthModal: React.FC = () => {
                 setError(null);
                 setSuccessMsg(null);
               }}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                 activeRole === 'admin'
                   ? 'bg-white text-purple-900 shadow-xs'
                   : 'text-white/80 hover:text-white'
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Platform Admin</span>
+              <span>Admin</span>
             </button>
           </div>
         </div>
 
-        {/* Patient Notice */}
+        {/* Informational Sub-Banner */}
         <div className="bg-slate-50 border-b border-slate-100 px-5 py-2.5 flex items-center gap-2 text-xs text-slate-600">
           <Info className="w-4 h-4 text-blue-600 shrink-0" />
           <p>
-            Patients can book consultations and access health records directly without signing in to this portal.
+            {activeRole === 'patient'
+              ? 'Patients can register with a JPG display picture and view verified doctor credentials.'
+              : activeRole === 'doctor'
+              ? 'Doctors can upload an official JPG headshot during registration for verified patient trust.'
+              : 'Administrative login requires strict multi-tier credential verification.'}
           </p>
         </div>
 
@@ -352,7 +443,9 @@ export const AuthModal: React.FC = () => {
             }}
             className={`py-3 px-4 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'login'
-                ? activeRole === 'doctor'
+                ? activeRole === 'patient'
+                  ? 'border-emerald-600 text-emerald-700 bg-white'
+                  : activeRole === 'doctor'
                   ? 'border-blue-600 text-blue-700 bg-white'
                   : 'border-purple-600 text-purple-700 bg-white'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -371,34 +464,40 @@ export const AuthModal: React.FC = () => {
             }}
             className={`py-3 px-4 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'register'
-                ? activeRole === 'doctor'
+                ? activeRole === 'patient'
+                  ? 'border-emerald-600 text-emerald-700 bg-white'
+                  : activeRole === 'doctor'
                   ? 'border-blue-600 text-blue-700 bg-white'
                   : 'border-purple-600 text-purple-700 bg-white'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Award className="w-3.5 h-3.5" />
-            <span>Register {activeRole === 'doctor' ? 'Doctor' : 'Admin'}</span>
+            <span>
+              Register {activeRole === 'patient' ? 'Patient' : activeRole === 'doctor' ? 'Doctor' : 'Admin'}
+            </span>
           </button>
 
-          <button
-            type="button"
-            id="auth-tab-forgot"
-            onClick={() => {
-              setActiveTab('forgot');
-              setError(null);
-            }}
-            className={`py-3 px-4 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
-              activeTab === 'forgot'
-                ? activeRole === 'doctor'
-                  ? 'border-blue-600 text-blue-700 bg-white'
-                  : 'border-purple-600 text-purple-700 bg-white'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Reset Password</span>
-          </button>
+          {activeRole !== 'patient' && (
+            <button
+              type="button"
+              id="auth-tab-forgot"
+              onClick={() => {
+                setActiveTab('forgot');
+                setError(null);
+              }}
+              className={`py-3 px-4 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                activeTab === 'forgot'
+                  ? activeRole === 'doctor'
+                    ? 'border-blue-600 text-blue-700 bg-white'
+                    : 'border-purple-600 text-purple-700 bg-white'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Reset Password</span>
+            </button>
+          )}
         </div>
 
         {/* Modal Body */}
@@ -434,125 +533,351 @@ export const AuthModal: React.FC = () => {
           {/* TAB 1: SIGN IN */}
           {activeTab === 'login' && (
             <div>
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    {activeRole === 'doctor' ? 'Doctor Work Email' : 'Administrative Email'}
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="email"
-                      required
-                      id="auth-login-email"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      placeholder={
-                        activeRole === 'doctor' ? 'e.g. dr.mehta@teledoc.med' : 'e.g. admin@teledoc.med'
-                      }
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800"
-                    />
+              {activeRole === 'patient' ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-emerald-50/70 border border-emerald-100 rounded-2xl text-xs text-emerald-900">
+                    <div className="flex items-center gap-3">
+                      {patientProfile?.avatar ? (
+                        <img
+                          src={patientProfile.avatar}
+                          alt="Patient"
+                          className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-xs"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-base">
+                          {patientProfile?.name ? patientProfile.name.charAt(0).toUpperCase() : 'P'}
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-bold text-sm text-emerald-950">
+                          {patientProfile?.name ? `Welcome back, ${patientProfile.name}` : 'Welcome, Patient'}
+                        </p>
+                        <p className="text-emerald-700 text-xs mt-0.5">
+                          {patientProfile?.email || 'Access consultations, appointments, and prescriptions'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700">Password</label>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('forgot')}
-                      className="text-[11px] text-blue-600 hover:underline cursor-pointer"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      id="auth-login-password"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="••••••••••••"
-                      className="w-full pl-9 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
+                  <form onSubmit={handleLoginSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Patient Email</label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="email"
+                          id="auth-patient-login-email"
+                          value={loginEmail || patientProfile?.email || ''}
+                          onChange={(e) => setLoginEmail(e.target.value)}
+                          placeholder="e.g. sarah.jenkins@example.com"
+                          className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                        />
+                      </div>
+                    </div>
 
-                {/* CAPTCHA Challenge Widget (Pillar 2: Triggered after >=3 failed attempts) */}
-                {requiresCaptcha && (
-                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          id="auth-patient-login-password"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          placeholder="••••••••••••"
+                          className="w-full pl-9 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      id="auth-patient-continue-btn"
+                      className="w-full py-3 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-md flex items-center justify-center gap-2"
+                    >
+                      <User className="w-4 h-4" />
+                      <span>Continue to Patient Portal</span>
+                    </button>
+
+                    <div className="text-center pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('register')}
+                        className="text-xs text-emerald-700 font-semibold hover:underline"
+                      >
+                        New patient? Register with your JPG picture →
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      {activeRole === 'doctor' ? 'Doctor Work Email' : 'Administrative Email'}
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="email"
+                        required
+                        id="auth-login-email"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder={
+                          activeRole === 'doctor' ? 'e.g. dr.mehta@teledoc.med' : 'e.g. admin@teledoc.med'
+                        }
+                        className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">Password</label>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('forgot')}
+                        className="text-[11px] text-blue-600 hover:underline cursor-pointer"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        id="auth-login-password"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="••••••••••••"
+                        className="w-full pl-9 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CAPTCHA Challenge Widget (Pillar 2: Triggered after >=3 failed attempts) */}
+                  {requiresCaptcha && (
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={captchaVerified}
+                          onChange={(e) => setCaptchaVerified(e.target.checked)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                        />
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">Security Verification</p>
+                          <p className="text-[10px] text-slate-500">Please confirm to proceed</p>
+                        </div>
+                      </label>
+                      <ShieldCheck className={`w-5 h-5 ${captchaVerified ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-600 select-none">
                       <input
                         type="checkbox"
-                        checked={captchaVerified}
-                        onChange={(e) => setCaptchaVerified(e.target.checked)}
-                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Security Verification</p>
-                        <p className="text-[10px] text-slate-500">Please confirm to proceed</p>
-                      </div>
+                      <span>Remember this device</span>
                     </label>
-                    <ShieldCheck className={`w-5 h-5 ${captchaVerified ? 'text-emerald-600' : 'text-slate-400'}`} />
                   </div>
-                )}
 
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-slate-600 select-none">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>Remember this device</span>
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  id="auth-login-submit-btn"
-                  disabled={loading}
-                  className={`w-full py-3 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center justify-center gap-2 ${
-                    activeRole === 'doctor'
-                      ? 'bg-blue-600 hover:bg-blue-700'
-                      : 'bg-purple-600 hover:bg-purple-700'
-                  }`}
-                >
-                  {loading ? (
-                    <span>Signing in...</span>
-                  ) : (
-                    <>
-                      <Lock className="w-4 h-4" />
-                      <span>
-                        Sign In to {activeRole === 'doctor' ? 'Doctor Portal' : 'Admin Portal'}
-                      </span>
-                    </>
-                  )}
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    id="auth-login-submit-btn"
+                    disabled={loading}
+                    className={`w-full py-3 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center justify-center gap-2 ${
+                      activeRole === 'doctor'
+                        ? 'bg-blue-600 hover:bg-blue-700'
+                        : 'bg-purple-600 hover:bg-purple-700'
+                    }`}
+                  >
+                    {loading ? (
+                      <span>Signing in...</span>
+                    ) : (
+                      <>
+                        <Lock className="w-4 h-4" />
+                        <span>
+                          Sign In to {activeRole === 'doctor' ? 'Doctor Portal' : 'Admin Portal'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
             </div>
           )}
 
           {/* TAB 2: REGISTRATION */}
           {activeTab === 'register' && (
             <div>
-              {activeRole === 'doctor' ? (
+              {activeRole === 'patient' ? (
+                <form onSubmit={handlePatientRegisterSubmit} className="space-y-4">
+                  <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl text-xs text-emerald-900">
+                    <p className="font-bold mb-0.5">Patient Account Registration</p>
+                    <p className="text-emerald-800 text-[11px]">
+                      Create your patient profile and upload your JPG display picture to consult verified doctors and access digital records.
+                    </p>
+                  </div>
+
+                  {/* Patient JPG Avatar Upload */}
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <label className="block text-xs font-bold text-slate-700 mb-2">
+                      Patient Display Picture (JPG)
+                    </label>
+                    <JpgAvatarUploader
+                      currentAvatar={patientForm.avatar}
+                      userName={patientForm.name || 'Patient'}
+                      onAvatarChange={(avatarUrl) => setPatientForm((prev) => ({ ...prev, avatar: avatarUrl }))}
+                      label="Upload Patient Profile Picture (JPG only)"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Full Legal Name *</label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          required
+                          id="auth-patient-name"
+                          value={patientForm.name}
+                          onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })}
+                          placeholder="e.g. Sarah Jenkins"
+                          className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Email Address *</label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="email"
+                          required
+                          id="auth-patient-email"
+                          value={patientForm.email}
+                          onChange={(e) => setPatientForm({ ...patientForm, email: e.target.value })}
+                          placeholder="sarah.jenkins@example.com"
+                          className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Contact Phone</label>
+                      <input
+                        type="tel"
+                        value={patientForm.phone || ''}
+                        onChange={(e) => setPatientForm({ ...patientForm, phone: e.target.value })}
+                        placeholder="+1 (555) 234-5678"
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Date of Birth</label>
+                      <input
+                        type="date"
+                        value={patientForm.dateOfBirth || ''}
+                        onChange={(e) => setPatientForm({ ...patientForm, dateOfBirth: e.target.value })}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Blood Group</label>
+                      <select
+                        value={patientForm.bloodGroup || 'O+'}
+                        onChange={(e) => setPatientForm({ ...patientForm, bloodGroup: e.target.value })}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                      >
+                        {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) => (
+                          <option key={bg} value={bg}>
+                            {bg}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Create Password (Optional)</label>
+                      <input
+                        type="password"
+                        value={patientForm.password || ''}
+                        onChange={(e) => setPatientForm({ ...patientForm, password: e.target.value })}
+                        placeholder="At least 6 characters..."
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Confirm Password</label>
+                      <input
+                        type="password"
+                        value={patientConfirmPass}
+                        onChange={(e) => setPatientConfirmPass(e.target.value)}
+                        placeholder="Repeat password..."
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    id="auth-patient-register-btn"
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
+                  >
+                    <User className="w-4 h-4" />
+                    <span>{loading ? 'Registering Patient...' : 'Complete Patient Registration'}</span>
+                  </button>
+                </form>
+              ) : activeRole === 'doctor' ? (
                 <form onSubmit={handleDoctorRegisterSubmit} className="space-y-4">
                   <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-2xl text-xs text-blue-900">
                     <p className="font-bold mb-0.5">Doctor Onboarding Registration</p>
                     <p className="text-blue-800 text-[11px]">
                       Complete registration to submit provider credentials and join the telemedicine clinical network.
                     </p>
+                  </div>
+
+                  {/* Doctor JPG Avatar Upload */}
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <label className="block text-xs font-bold text-slate-700 mb-2">
+                      Doctor Profile Picture (JPG)
+                    </label>
+                    <JpgAvatarUploader
+                      currentAvatar={doctorForm.avatar}
+                      userName={doctorForm.name || 'Doctor'}
+                      onAvatarChange={(avatarUrl) => setDoctorForm((prev) => ({ ...prev, avatar: avatarUrl }))}
+                      label="Upload Official Doctor Headshot (JPG only)"
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

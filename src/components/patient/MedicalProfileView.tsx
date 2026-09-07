@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { JpgAvatarUploader } from '../common/JpgAvatarUploader';
 import {
   User,
   ShieldCheck,
@@ -11,6 +12,7 @@ import {
   Check,
   Plus,
   X,
+  Camera,
 } from 'lucide-react';
 
 export const MedicalProfileView: React.FC = () => {
@@ -31,6 +33,7 @@ export const MedicalProfileView: React.FC = () => {
   const [emergencyContact, setEmergencyContact] = useState(patientProfile.emergencyContact);
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [showAvatarEdit, setShowAvatarEdit] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,47 +75,99 @@ export const MedicalProfileView: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header Banner */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <img
-            src={patientProfile.avatar}
-            alt={patientProfile.name}
-            className="w-16 h-16 rounded-2xl object-cover ring-2 ring-blue-100"
-            referrerPolicy="no-referrer"
-          />
-          <div>
-            <div className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-600 mb-0.5">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Verified Patient Intake Record
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="relative group">
+              <img
+                src={patientProfile.avatar}
+                alt={patientProfile.name}
+                className="w-16 h-16 rounded-2xl object-cover ring-2 ring-emerald-200 shadow-xs"
+                referrerPolicy="no-referrer"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAvatarEdit(!showAvatarEdit)}
+                title="Change display picture (JPG)"
+                className="absolute -bottom-1 -right-1 bg-emerald-600 hover:bg-emerald-700 text-white p-1.5 rounded-full shadow-xs transition-transform hover:scale-110"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <h1 className="text-xl font-extrabold text-slate-900">{patientProfile.name}</h1>
-            <p className="text-xs text-slate-500">
-              {patientProfile.email} · {patientProfile.phone}
-            </p>
+            <div>
+              <div className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-600 mb-0.5">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Verified Patient Intake Record
+              </div>
+              <h1 className="text-xl font-extrabold text-slate-900">{patientProfile.name}</h1>
+              <p className="text-xs text-slate-500">
+                {patientProfile.email} · {patientProfile.phone}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAvatarEdit(!showAvatarEdit)}
+              className="px-3 py-2 border border-slate-200 hover:border-emerald-500 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-700 bg-slate-50 hover:bg-emerald-50/50 flex items-center gap-1.5 transition-colors"
+            >
+              <Camera className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{showAvatarEdit ? 'Hide DP Uploader' : 'Change DP (JPG)'}</span>
+            </button>
+
+            <button
+              form="medical-intake-form"
+              type="submit"
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs ${
+                savedSuccess
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              {savedSuccess ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Saved Successfully</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Save & Update Profile</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        <button
-          form="medical-intake-form"
-          type="submit"
-          className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs ${
-            savedSuccess
-              ? 'bg-emerald-600 text-white'
-              : 'bg-blue-600 hover:bg-blue-700 text-white'
-          }`}
-        >
-          {savedSuccess ? (
-            <>
-              <Check className="w-4 h-4" />
-              <span>Saved Successfully</span>
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              <span>Save & Update Profile</span>
-            </>
-          )}
-        </button>
+        {/* Expandable JPG Avatar Uploader */}
+        {showAvatarEdit && (
+          <div className="pt-4 border-t border-slate-100 mt-2 bg-slate-50/60 p-4 rounded-2xl">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Camera className="w-4 h-4 text-emerald-600" />
+                Upload Patient Display Picture (JPG format only)
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowAvatarEdit(false)}
+                className="text-xs text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <JpgAvatarUploader
+              currentAvatar={patientProfile.avatar}
+              userName={patientProfile.name}
+              onAvatarChange={(newAvatar) => {
+                updatePatientProfile({ avatar: newAvatar });
+                setSavedSuccess(true);
+                setTimeout(() => setSavedSuccess(false), 2500);
+              }}
+              label="Choose or drop a JPG photo to update your display picture"
+            />
+          </div>
+        )}
       </div>
 
       {/* Structured Medical Intake Form */}
