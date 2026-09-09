@@ -15,12 +15,21 @@ import {
   DollarSign,
   KeyRound,
   CheckCircle,
+  CheckCircle2,
   AlertCircle,
   Eye,
   EyeOff,
   ArrowRight,
   Info,
   Clock,
+  Key,
+  RefreshCw,
+  Check,
+  Sparkles,
+  Copy,
+  Inbox,
+  Send,
+  ExternalLink,
 } from 'lucide-react';
 
 export const AuthModal: React.FC = () => {
@@ -35,7 +44,9 @@ export const AuthModal: React.FC = () => {
     adminRegister,
     patientRegister,
     requestPasswordReset,
+    resetPasswordWithOldPassword,
     doctors,
+    currentUser,
     patientProfile,
     setCurrentRole,
     setCurrentTab,
@@ -48,12 +59,16 @@ export const AuthModal: React.FC = () => {
   // Synchronize when modal opens with new defaults
   React.useEffect(() => {
     setActiveRole(authModalRole);
-    setActiveTab(authModalTab === 'register' ? 'register' : 'login');
+    setActiveTab(authModalTab === 'register' ? 'register' : authModalTab === 'forgot' ? 'forgot' : 'login');
     setError(null);
     setSuccessMsg(null);
     setRequiresCaptcha(false);
     setCaptchaVerified(false);
     setLockRemaining(0);
+    // Pre-fill email if available (favoring user Gmail)
+    if (!resetEmail) {
+      setResetEmail(currentUser?.email || patientProfile?.email || 'oomkarchavan@gmail.com');
+    }
   }, [authModalOpen, authModalRole, authModalTab]);
 
   // UI state
@@ -72,8 +87,22 @@ export const AuthModal: React.FC = () => {
   const [loginPassword, setLoginPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
 
-  // Password reset state
+  // Password reset state (Gmail/Email + Old Password + New Password)
   const [resetEmail, setResetEmail] = useState('');
+  const [resetOldPassword, setResetOldPassword] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [showResetOldPassword, setShowResetOldPassword] = useState(false);
+  const [showResetNewPassword, setShowResetNewPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
+  const [resetMode, setResetMode] = useState<'with_old_password' | 'email_link'>('with_old_password');
+  const [gmailDeliveryResult, setGmailDeliveryResult] = useState<{
+    tempPassword: string;
+    resetToken: string;
+    dispatchedTo: string;
+    deliveryTime: string;
+  } | null>(null);
+  const [copiedTempPass, setCopiedTempPass] = useState(false);
 
   // Doctor Registration state
   const [doctorForm, setDoctorForm] = useState<DoctorRegistrationInput>({
@@ -218,7 +247,7 @@ export const AuthModal: React.FC = () => {
       if (!res.success) {
         setError(res.error || 'Doctor registration could not be completed. Please review your entries.');
       } else {
-        setSuccessMsg('Registration verified! Redirecting to doctor console...');
+        setSuccessMsg('Registration submitted! Your profile is pending administrative approval and will appear to patients once approved by Platform Administration.');
       }
     } catch {
       setLoading(false);
@@ -297,11 +326,126 @@ export const AuthModal: React.FC = () => {
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setSuccessMsg(null);
+    setGmailDeliveryResult(null);
 
-    const res = await requestPasswordReset(resetEmail);
-    setLoading(false);
-    setSuccessMsg(res.message);
+    const cleanEmail = resetEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError('Please enter your Gmail or registered account email address.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await requestPasswordReset(cleanEmail);
+      setLoading(false);
+
+      if (!res.success) {
+        setError(res.message || 'Unable to dispatch password to Gmail.');
+      } else {
+        setSuccessMsg(res.message);
+        if (res.tempPassword && res.dispatchedTo) {
+          setGmailDeliveryResult({
+            tempPassword: res.tempPassword,
+            resetToken: res.resetToken || 'RST-9821-TOKEN',
+            dispatchedTo: res.dispatchedTo,
+            deliveryTime: res.deliveryTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+      }
+    } catch {
+      setLoading(false);
+      setError('An unexpected error occurred while sending password to Gmail.');
+    }
+  };
+
+  const handleCopyTempPassword = (pass: string) => {
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(pass);
+      setCopiedTempPass(true);
+      setTimeout(() => setCopiedTempPass(false), 3000);
+    }
+  };
+
+  const computePasswordStrength = (pass: string) => {
+    let score = 0;
+    if (pass.length >= 8) score++;
+    if (pass.length >= 12) score++;
+    if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass) && /[^A-Za-z0-9]/.test(pass)) score++;
+    if (score === 0) return { score: 10, label: 'Very Weak', color: 'bg-slate-300', text: 'text-slate-500' };
+    if (score === 1) return { score: 25, label: 'Weak', color: 'bg-rose-500', text: 'text-rose-600' };
+    if (score === 2) return { score: 50, label: 'Fair', color: 'bg-amber-500', text: 'text-amber-600' };
+    if (score === 3) return { score: 75, label: 'Good', color: 'bg-blue-500', text: 'text-blue-600' };
+    return { score: 100, label: 'Strong', color: 'bg-emerald-500', text: 'text-emerald-600' };
+  };
+
+  const resetPassRules = computePasswordRules(resetNewPassword);
+  const resetPassStrength = computePasswordStrength(resetNewPassword);
+
+  const handleResetWithOldPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+
+    const cleanEmail = resetEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError('Please enter your registered Gmail or email address.');
+      return;
+    }
+
+    if (!resetOldPassword) {
+      setError('Please enter your current/old password.');
+      return;
+    }
+
+    if (!resetNewPassword) {
+      setError('Please enter your new password.');
+      return;
+    }
+
+    if (resetNewPassword !== resetConfirmPassword) {
+      setError('New passwords do not match. Please verify both password entries.');
+      return;
+    }
+
+    if (resetOldPassword === resetNewPassword) {
+      setError('New password must be different from your current old password.');
+      return;
+    }
+
+    if (
+      !resetPassRules.length ||
+      !resetPassRules.hasUpper ||
+      !resetPassRules.hasLower ||
+      !resetPassRules.hasNumber ||
+      !resetPassRules.hasSpecial
+    ) {
+      setError(
+        'New password must meet all complexity requirements (8+ characters, uppercase, lowercase, number, and special character).'
+      );
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await resetPasswordWithOldPassword(cleanEmail, resetOldPassword, resetNewPassword);
+      setLoading(false);
+
+      if (!res.success) {
+        setError(res.error || 'Password reset failed. Please verify your old password.');
+      } else {
+        setSuccessMsg(res.message || 'Password reset successfully! Your new password has been set and is now active.');
+        setLoginEmail(cleanEmail);
+        setLoginPassword(resetNewPassword);
+        setResetOldPassword('');
+        setResetNewPassword('');
+        setResetConfirmPassword('');
+      }
+    } catch {
+      setLoading(false);
+      setError('An unexpected error occurred while resetting password.');
+    }
   };
 
   const doctorPassRules = computePasswordRules(doctorForm.password);
@@ -478,26 +622,27 @@ export const AuthModal: React.FC = () => {
             </span>
           </button>
 
-          {activeRole !== 'patient' && (
-            <button
-              type="button"
-              id="auth-tab-forgot"
-              onClick={() => {
-                setActiveTab('forgot');
-                setError(null);
-              }}
-              className={`py-3 px-4 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
-                activeTab === 'forgot'
-                  ? activeRole === 'doctor'
-                    ? 'border-blue-600 text-blue-700 bg-white'
-                    : 'border-purple-600 text-purple-700 bg-white'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Reset Password</span>
-            </button>
-          )}
+          <button
+            type="button"
+            id="auth-tab-forgot"
+            onClick={() => {
+              setActiveTab('forgot');
+              setError(null);
+              setSuccessMsg(null);
+            }}
+            className={`py-3 px-4 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+              activeTab === 'forgot'
+                ? activeRole === 'patient'
+                  ? 'border-emerald-600 text-emerald-700 bg-white font-bold'
+                  : activeRole === 'doctor'
+                  ? 'border-blue-600 text-blue-700 bg-white font-bold'
+                  : 'border-purple-600 text-purple-700 bg-white font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Reset Password</span>
+          </button>
         </div>
 
         {/* Modal Body */}
@@ -1033,12 +1178,19 @@ export const AuthModal: React.FC = () => {
                     </label>
                   </div>
 
+                  <div className="p-3 bg-amber-50/90 border border-amber-200/90 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-[11px] leading-relaxed">
+                      <strong className="font-semibold text-amber-950">Mandatory Admin Verification:</strong> Upon registration, your profile is submitted to Platform Administration with <span className="font-semibold text-amber-950">"pending"</span> status. Once approved by the administrator, your profile and consultation slots will become visible to all patients.
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
                     disabled={loading}
                     className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
                   >
-                    {loading ? 'Registering...' : 'Register Doctor Profile'}
+                    {loading ? 'Submitting Application...' : 'Submit Profile for Admin Approval'}
                   </button>
                 </form>
               ) : (
@@ -1162,52 +1314,581 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 3: FORGOT PASSWORD */}
+          {/* TAB 3: RESET & SET NEW PASSWORD */}
           {activeTab === 'forgot' && (
             <div className="space-y-4">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700">
+              {/* Header Box */}
+              <div className="p-4 bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-slate-50 border border-blue-200/80 rounded-2xl text-xs text-slate-700">
                 <div className="flex items-center gap-2 font-bold text-slate-900 mb-1">
-                  <KeyRound className="w-4 h-4 text-blue-600" />
-                  <span>Password Reset</span>
+                  <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                    <Key className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-sm font-extrabold text-blue-900">Reset & Set New Password</span>
                 </div>
                 <p className="text-slate-600 text-xs leading-relaxed">
-                  Enter your registered account email. If that email is registered with us, instructions to reset your password will be sent.
+                  Reset your password by providing your registered Gmail or email, verifying your current old password, and setting your new secure password.
                 </p>
+
+                {/* Reset Mode Toggle Pills */}
+                <div className="mt-3 flex items-center gap-2 pt-2 border-t border-blue-200/60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetMode('with_old_password');
+                      setError(null);
+                      setSuccessMsg(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition-all flex items-center gap-1.5 ${
+                      resetMode === 'with_old_password'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 border border-slate-200'
+                    }`}
+                  >
+                    <KeyRound className="w-3 h-3" />
+                    <span>Reset with Old Password</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetMode('email_link');
+                      setError(null);
+                      setSuccessMsg(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition-all flex items-center gap-1.5 ${
+                      resetMode === 'email_link'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 border border-slate-200'
+                    }`}
+                  >
+                    <Mail className="w-3 h-3" />
+                    <span>Forgot Old Password? Email Link</span>
+                  </button>
+                </div>
               </div>
 
-              <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              {resetMode === 'with_old_password' ? (
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Registered Account Email</label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="email"
-                      required
-                      value={resetEmail}
-                      onChange={(e) => setResetEmail(e.target.value)}
-                      placeholder="name@organization.med"
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800"
-                    />
+                  {/* Quick Demo Autofill Chips */}
+                  <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-amber-500" />
+                        Quick Test Accounts (Autofill Email & Old Pass)
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResetEmail('dr.mehta@teledoc.med');
+                          setResetOldPassword('Doctor@2026!');
+                          setError(null);
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-slate-200 hover:border-blue-300 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-1 shadow-2xs"
+                      >
+                        <span>🩺 Dr. Mehta</span>
+                        <span className="text-[10px] text-slate-400">(Doctor@2026!)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResetEmail('admin@teledoc.med');
+                          setResetOldPassword('Admin@2026!');
+                          setError(null);
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 border border-slate-200 hover:border-purple-300 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-1 shadow-2xs"
+                      >
+                        <span>🛡️ Admin</span>
+                        <span className="text-[10px] text-slate-400">(Admin@2026!)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResetEmail('anjali.sharma@example.com');
+                          setResetOldPassword('Patient@2026!');
+                          setError(null);
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-1 shadow-2xs"
+                      >
+                        <span>👤 Patient Anjali</span>
+                        <span className="text-[10px] text-slate-400">(Patient@2026!)</span>
+                      </button>
+                    </div>
                   </div>
+
+                  <form onSubmit={handleResetWithOldPasswordSubmit} className="space-y-4">
+                    {/* 1. Gmail / Account Email */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Gmail / Registered Account Email
+                        </label>
+                        <span className="text-[10px] text-slate-500">Google Gmail or Organization Email</span>
+                      </div>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="email"
+                          id="reset-password-email"
+                          required
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                          placeholder="e.g. oomkarchavan@gmail.com or name@organization.med"
+                          className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2. Old / Current Password */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Current / Old Password
+                      </label>
+                      <div className="relative">
+                        <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showResetOldPassword ? 'text' : 'password'}
+                          id="reset-password-old"
+                          required
+                          value={resetOldPassword}
+                          onChange={(e) => setResetOldPassword(e.target.value)}
+                          placeholder="Enter your existing old password"
+                          className="w-full pl-9 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800 transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowResetOldPassword(!showResetOldPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showResetOldPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3. New Password */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          New Password Set
+                        </label>
+                        {resetNewPassword && (
+                          <span className={`text-[10px] font-bold ${resetPassStrength.text}`}>
+                            Strength: {resetPassStrength.label}
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showResetNewPassword ? 'text' : 'password'}
+                          id="reset-password-new"
+                          required
+                          value={resetNewPassword}
+                          onChange={(e) => setResetNewPassword(e.target.value)}
+                          placeholder="Create strong new password"
+                          className="w-full pl-9 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800 transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowResetNewPassword(!showResetNewPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showResetNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      {/* Password Strength Meter Bar */}
+                      {resetNewPassword && (
+                        <div className="mt-1.5 space-y-1.5">
+                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-300 ${resetPassStrength.color}`}
+                              style={{ width: `${resetPassStrength.score}%` }}
+                            />
+                          </div>
+
+                          {/* Rule checklist */}
+                          <div className="grid grid-cols-2 gap-1 text-[10px]">
+                            <span
+                              className={`flex items-center gap-1 ${
+                                resetPassRules.length ? 'text-emerald-700 font-semibold' : 'text-slate-400'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3 h-3" /> 8–72 characters
+                            </span>
+                            <span
+                              className={`flex items-center gap-1 ${
+                                resetPassRules.hasUpper ? 'text-emerald-700 font-semibold' : 'text-slate-400'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3 h-3" /> Uppercase letter (A-Z)
+                            </span>
+                            <span
+                              className={`flex items-center gap-1 ${
+                                resetPassRules.hasLower ? 'text-emerald-700 font-semibold' : 'text-slate-400'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3 h-3" /> Lowercase letter (a-z)
+                            </span>
+                            <span
+                              className={`flex items-center gap-1 ${
+                                resetPassRules.hasNumber && resetPassRules.hasSpecial
+                                  ? 'text-emerald-700 font-semibold'
+                                  : 'text-slate-400'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3 h-3" /> Number & symbol (@, #, !)
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 4. Confirm New Password */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Confirm New Password
+                        </label>
+                        {resetConfirmPassword && (
+                          <span
+                            className={`text-[10px] font-bold ${
+                              resetNewPassword === resetConfirmPassword ? 'text-emerald-600' : 'text-rose-600'
+                            }`}
+                          >
+                            {resetNewPassword === resetConfirmPassword ? '✓ Passwords match' : '✗ Passwords do not match'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <CheckCircle2 className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showResetConfirmPassword ? 'text' : 'password'}
+                          id="reset-password-confirm"
+                          required
+                          value={resetConfirmPassword}
+                          onChange={(e) => setResetConfirmPassword(e.target.value)}
+                          placeholder="Re-enter new password to confirm"
+                          className={`w-full pl-9 pr-10 py-2.5 text-xs bg-slate-50 border rounded-xl focus:ring-2 focus:bg-white text-slate-800 transition-colors ${
+                            resetConfirmPassword && resetNewPassword !== resetConfirmPassword
+                              ? 'border-rose-300 focus:ring-rose-500'
+                              : 'border-slate-200 focus:ring-blue-500'
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowResetConfirmPassword(!showResetConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showResetConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      id="reset-password-submit-btn"
+                      disabled={loading}
+                      className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Verifying & Setting New Password...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Key className="w-4 h-4" />
+                          <span>Set New Password & Update Account</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+
+                  {/* Post-Success Sign In action */}
+                  {successMsg && (
+                    <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 text-emerald-800 font-semibold">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        <span>Ready to sign in with your new password?</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('login')}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs"
+                      >
+                        Sign In Now →
+                      </button>
+                    </div>
+                  )}
                 </div>
+              ) : (
+                /* GMAIL PASSWORD & RESET LINK DELIVERY */
+                <div className="space-y-4">
+                  {/* Informational Context */}
+                  <div className="p-3 bg-red-50/60 border border-red-200/80 rounded-xl text-xs text-slate-700 leading-relaxed flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-md bg-red-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs font-bold text-[10px]">
+                      G
+                    </div>
+                    <div>
+                      <p className="font-bold text-red-900 mb-0.5">
+                        Send Password Directly to Your Gmail Inbox
+                      </p>
+                      <p className="text-slate-600 text-[11px] leading-relaxed">
+                        Forgot your old password? Enter your Gmail address below. We will immediately generate a temporary recovery password and dispatch it directly to your Gmail inbox with a 1-click password update link.
+                      </p>
+                    </div>
+                  </div>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
-                >
-                  {loading ? 'Submitting...' : 'Send Password Reset Link'}
-                </button>
-              </form>
+                  {/* If email has NOT been dispatched yet or user wants to send to another email */}
+                  {!gmailDeliveryResult ? (
+                    <div className="space-y-3">
+                      <form onSubmit={handleResetPasswordSubmit} className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Your Gmail or Registered Account Email
+                          </label>
+                          <div className="relative">
+                            <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="email"
+                              id="reset-gmail-input"
+                              required
+                              value={resetEmail}
+                              onChange={(e) => setResetEmail(e.target.value)}
+                              placeholder="e.g. oomkarchavan@gmail.com"
+                              className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:bg-white text-slate-800 font-medium transition-colors"
+                            />
+                          </div>
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            We will send a temporary password and 1-click reset access to this address.
+                          </span>
+                        </div>
 
-              <div className="pt-2 text-center">
+                        <button
+                          type="submit"
+                          id="send-gmail-password-btn"
+                          disabled={loading}
+                          className="w-full py-3 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {loading ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              <span>Dispatching Password to Gmail...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-4 h-4" />
+                              <span>Send Password & Reset Link to Gmail</span>
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    </div>
+                  ) : (
+                    /* LIVE GMAIL INBOX MESSAGE SIMULATION */
+                    <div className="space-y-3">
+                      {/* Gmail Delivery Header Alert */}
+                      <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs flex items-center justify-between text-emerald-800 font-medium">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>
+                            Password successfully dispatched to your Gmail: <strong className="underline">{gmailDeliveryResult.dispatchedTo}</strong>
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
+                          Delivered {gmailDeliveryResult.deliveryTime}
+                        </span>
+                      </div>
+
+                      {/* Google Gmail Inbox Card Preview */}
+                      <div className="bg-white border-2 border-red-200/90 rounded-2xl shadow-md overflow-hidden text-xs">
+                        {/* Gmail Card Top Bar */}
+                        <div className="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 rounded-md bg-red-600 flex items-center justify-center font-black text-xs text-white">
+                              M
+                            </div>
+                            <span className="font-bold text-xs tracking-tight">Gmail • Incoming TeleDoc Security Message</span>
+                          </div>
+                          <a
+                            href="https://mail.google.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-slate-300 hover:text-white flex items-center gap-1 font-semibold transition-colors"
+                          >
+                            <span>Open Gmail</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+
+                        {/* Email Details Header */}
+                        <div className="p-4 bg-slate-50/70 border-b border-slate-200 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-slate-900 text-sm">
+                              Your TeleDoc Password Reset & Temporary Credentials
+                            </span>
+                            <span className="text-[10px] text-slate-500">{gmailDeliveryResult.deliveryTime}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-3">
+                            <span><strong>From:</strong> TeleDoc Security &lt;security@teledoc.med&gt;</span>
+                            <span><strong>To:</strong> {gmailDeliveryResult.dispatchedTo}</span>
+                          </div>
+                        </div>
+
+                        {/* Email Content Body */}
+                        <div className="p-4 space-y-3.5 bg-white">
+                          <p className="text-slate-700 text-xs leading-relaxed">
+                            Hello, we received a request to access your TeleDoc account without your old password. A secure temporary password has been automatically generated and is now active for your account:
+                          </p>
+
+                          {/* Temporary Password Highlight Box */}
+                          <div className="p-3.5 bg-gradient-to-r from-red-50 via-slate-50 to-amber-50 border border-red-200 rounded-xl flex items-center justify-between gap-3">
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-red-700 block">
+                                Temporary Password (Active on Account)
+                              </span>
+                              <span className="font-mono text-base font-black text-slate-900 tracking-wider select-all">
+                                {gmailDeliveryResult.tempPassword}
+                              </span>
+                              <span className="text-[10px] text-slate-500 block mt-0.5">
+                                Valid for immediate sign-in or to set a new password.
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleCopyTempPassword(gmailDeliveryResult.tempPassword)}
+                              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer ${
+                                copiedTempPass
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
+                              }`}
+                            >
+                              {copiedTempPass ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>Copy Password</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Action Buttons inside Gmail card */}
+                          <div className="pt-1 space-y-2">
+                            <span className="text-[11px] font-bold text-slate-700 block">
+                              What would you like to do next?
+                            </span>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {/* 1. Set New Password (automatically pre-fills old pass with temp password!) */}
+                              <button
+                                type="button"
+                                id="apply-gmail-temp-pass-btn"
+                                onClick={() => {
+                                  setResetMode('with_old_password');
+                                  setResetEmail(gmailDeliveryResult.dispatchedTo);
+                                  setResetOldPassword(gmailDeliveryResult.tempPassword);
+                                  setResetNewPassword('');
+                                  setResetConfirmPassword('');
+                                  setError(null);
+                                  setSuccessMsg(
+                                    `Temporary password from your Gmail (${gmailDeliveryResult.dispatchedTo}) has been filled as your Current Password. Now enter your desired new password below!`
+                                  );
+                                }}
+                                className="py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Key className="w-3.5 h-3.5" />
+                                <span>Set My Own New Password →</span>
+                              </button>
+
+                              {/* 2. Direct Sign In */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab('login');
+                                  setLoginEmail(gmailDeliveryResult.dispatchedTo);
+                                  setLoginPassword(gmailDeliveryResult.tempPassword);
+                                  setError(null);
+                                  setSuccessMsg(
+                                    `Credentials filled! Click "Sign In" to access your account with the password sent to your Gmail.`
+                                  );
+                                }}
+                                className="py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Lock className="w-3.5 h-3.5" />
+                                <span>Sign In With This Password</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Security Footer Details */}
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                            <span>Audit Security Token: {gmailDeliveryResult.resetToken}</span>
+                            <span>Bcrypt encrypted • HIPAA/GDPR compliant</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Option to send another or change email */}
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGmailDeliveryResult(null);
+                            setError(null);
+                            setSuccessMsg(null);
+                          }}
+                          className="text-xs text-slate-600 hover:text-slate-900 underline font-medium cursor-pointer"
+                        >
+                          Send to a different Gmail address
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const res = await requestPasswordReset(gmailDeliveryResult.dispatchedTo);
+                            if (res.success && res.tempPassword) {
+                              setGmailDeliveryResult({
+                                tempPassword: res.tempPassword,
+                                resetToken: res.resetToken || '',
+                                dispatchedTo: gmailDeliveryResult.dispatchedTo,
+                                deliveryTime: res.deliveryTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                              });
+                              setSuccessMsg('A new temporary password has been dispatched to your Gmail!');
+                            }
+                          }}
+                          className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Generate & Send Another Password</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Navigation Back */}
+              <div className="pt-2 flex items-center justify-between text-xs border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setActiveTab('login')}
-                  className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+                  className="font-semibold text-blue-600 hover:underline cursor-pointer flex items-center gap-1"
                 >
                   ← Back to Sign In
                 </button>
+                <span className="text-[11px] text-slate-400">
+                  Protected with salted Bcrypt cryptography
+                </span>
               </div>
             </div>
           )}

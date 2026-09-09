@@ -57,10 +57,15 @@ TeleDoc blends two contemporary digital design paradigms:
 
 ### 5. Admin Governance & Platform Operations (Authenticated)
 - **Executive Analytics**: Gross transaction volume, doctor utilization rates, refund ratios, and specialty distribution charts.
-- **Doctor Verification**: Review medical licenses, educational credentials, and approve/reject provider applications.
+- **Mandatory Doctor Credential Verification & Publishing**:
+  - All newly registered healthcare practitioners are placed in **"pending"** review status by default.
+  - While pending, practitioner profiles and consultation slots remain strictly hidden from the public patient directory and symptom matcher.
+  - Platform Administrators review registered medical licenses, qualifications, hospital affiliations, and consultation fees in a dedicated **Pending Credential Review Queue**.
+  - One-click **"Approve & Publish to Patients"** immediately activates the doctor profile across all patient search indexes, booking calendars, and triage matchers.
+  - Integrated suspension and rejection governance with real-time audit trail logs.
 - **Dispute Resolution**: Automated refund handling for cancelled appointments.
 - **Platform Configuration**: Commission fee sliders, minimum cancellation notice buffers, and system feature toggles.
-- **Audit Logging**: Immutable system audit trail recording every authentication, booking, prescription generation, and refund event.
+- **Audit Logging**: Immutable system audit trail recording every authentication, booking, prescription generation, doctor credential verification, and refund event.
 
 ---
 

@@ -189,6 +189,20 @@ export const passwordResetSchema = z.object({
     .max(254),
 });
 
+export const resetPasswordWithOldPasswordSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email('Please enter a valid Gmail or email address.')
+    .max(254, 'Email exceeds maximum allowed length.'),
+  oldPassword: z
+    .string()
+    .min(1, 'Current / old password is required.')
+    .max(72, 'Old password exceeds maximum length.'),
+  newPassword: passwordSchema,
+});
+
 /**
  * 3. BCRYPT PASSWORD HASHING & CONSTANT-TIME VERIFICATION
  */

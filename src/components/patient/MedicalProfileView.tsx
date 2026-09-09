@@ -13,10 +13,12 @@ import {
   Plus,
   X,
   Camera,
+  KeyRound,
+  Lock,
 } from 'lucide-react';
 
 export const MedicalProfileView: React.FC = () => {
-  const { patientProfile, updatePatientProfile } = useApp();
+  const { patientProfile, updatePatientProfile, openAuthModal } = useApp();
 
   const [dateOfBirth, setDateOfBirth] = useState(patientProfile.dateOfBirth);
   const [gender, setGender] = useState(patientProfile.gender);
@@ -474,6 +476,49 @@ export const MedicalProfileView: React.FC = () => {
                 }
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Account Security & Password Credentials */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-blue-600" />
+                Account Security & Password
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage your login credentials, verify existing password, and set new passwords securely.
+              </p>
+            </div>
+            <button
+              type="button"
+              id="patient-reset-password-btn"
+              onClick={() => openAuthModal('patient', 'forgot')}
+              className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold text-blue-700 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Reset / Change Password</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+              <span className="block text-[11px] font-semibold text-slate-500">Registered Account Gmail/Email</span>
+              <span className="font-bold text-slate-800 text-sm">{patientProfile.email || 'oomkarchavan@gmail.com'}</span>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-500">Password Encryption</span>
+                <span className="font-bold text-emerald-700 text-sm flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Bcrypt Hash (Cost 10)
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                Active
+              </span>
             </div>
           </div>
         </div>

@@ -16,6 +16,7 @@ import {
   Lock,
   LogOut,
   UserPlus,
+  KeyRound,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -29,6 +30,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
     currentRole,
     setCurrentRole,
     appointments,
+    doctors,
     setActiveVideoAppointment,
     resetToDefaults,
     currentTab: ctxCurrentTab,
@@ -43,6 +45,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
   const setCurrentTab = props.setCurrentTab ?? ctxSetCurrentTab;
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const pendingDoctorsCount = doctors.filter((d) => d.status === 'pending').length;
 
   // Check if there is any active or waiting room appointment
   const waitingOrActiveApt = appointments.find(
@@ -232,13 +235,18 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                 <button
                   id="nav-admin-doctors"
                   onClick={() => setCurrentTab('admin-doctors')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                     currentTab === 'admin-doctors'
                       ? 'bg-white text-purple-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
                 >
-                  Doctor Approvals
+                  <span>Doctor Approvals</span>
+                  {pendingDoctorsCount > 0 && (
+                    <span className="px-1.5 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-extrabold animate-pulse leading-none shadow-2xs">
+                      {pendingDoctorsCount}
+                    </span>
+                  )}
                 </button>
                 <button
                   id="nav-admin-appointments"
@@ -433,7 +441,12 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                           </div>
                         </div>
                       </div>
-                      {authAdmin ? (
+                      {pendingDoctorsCount > 0 ? (
+                        <span className="text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          {pendingDoctorsCount} pending
+                        </span>
+                      ) : authAdmin ? (
                         <span className="text-[10px] font-bold text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded-full">
                           Verified
                         </span>
@@ -472,6 +485,19 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                         + Register Admin
                       </button>
                     </div>
+
+                    <button
+                      type="button"
+                      id="dropdown-reset-password"
+                      onClick={() => {
+                        setShowRoleMenu(false);
+                        openAuthModal(currentRole, 'forgot');
+                      }}
+                      className="w-full mt-2 py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <KeyRound className="w-3 h-3 text-slate-500" />
+                      <span>Reset / Change Password</span>
+                    </button>
                   </div>
                 </div>
               )}

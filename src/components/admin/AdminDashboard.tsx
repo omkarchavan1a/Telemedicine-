@@ -20,6 +20,7 @@ import {
   Calendar,
   Building,
   RotateCcw,
+  Clock,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -35,6 +36,7 @@ export const AdminDashboard: React.FC = () => {
     updatePlatformConfig,
     currentTab,
     setCurrentTab,
+    setCurrentRole,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<
@@ -75,6 +77,8 @@ export const AdminDashboard: React.FC = () => {
   const [minFee, setMinFee] = useState(platformConfig.minFeeLimit);
   const [maxFee, setMaxFee] = useState(platformConfig.maxFeeLimit);
   const [configSaved, setConfigSaved] = useState(false);
+  const [doctorStatusFilter, setDoctorStatusFilter] = useState<'all' | 'pending' | 'approved' | 'suspended'>('all');
+  const [approvalNotice, setApprovalNotice] = useState<{ message: string; docName: string } | null>(null);
 
   // Platform KPIs
   const totalConsultations = appointments.length;
@@ -82,6 +86,7 @@ export const AdminDashboard: React.FC = () => {
   const cancelledConsultations = appointments.filter((a) => a.status === 'cancelled').length;
   const activeDoctorsCount = doctors.filter((d) => d.status === 'approved').length;
   const pendingDoctors = doctors.filter((d) => d.status === 'pending');
+  const suspendedDoctors = doctors.filter((d) => d.status === 'suspended');
 
   const grossRevenue = appointments
     .filter((a) => a.paymentStatus === 'paid' || a.status === 'completed')
@@ -666,27 +671,249 @@ export const AdminDashboard: React.FC = () => {
       {/* TAB 2: DOCTOR ONBOARDING & VERIFICATION (Module 2 of Admin Module) */}
       {activeTab === 'doctors' && (
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-6">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">
-              Doctor Credential Verification & Onboarding Authority
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Admin approval is mandatory before any practitioner appears in public search (FR-2.2).
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+              <div className="text-xs font-bold text-blue-600 uppercase tracking-wider">
+                Clinical Credential Governance
+              </div>
+              <h2 className="text-lg font-extrabold text-slate-900 mt-0.5">
+                Doctor Credential Verification & Onboarding Authority
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Mandatory administrative approval: Only approved doctors appear in patient searches, symptom matcher, and booking slots.
+              </p>
+            </div>
+
+            {/* Quick Stat Badges */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
+                Total: <span className="font-bold text-slate-900">{doctors.length}</span>
+              </div>
+              <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border ${
+                pendingDoctors.length > 0
+                  ? 'bg-amber-50 text-amber-900 border-amber-300 animate-pulse'
+                  : 'bg-slate-50 text-slate-600 border-slate-200'
+              }`}>
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Pending Approval: {pendingDoctors.length}</span>
+              </div>
+              <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>Live to Patients: {activeDoctorsCount}</span>
+              </div>
+            </div>
           </div>
 
+          {/* Action Success / Notification Banner */}
+          {approvalNotice && (
+            <div className="p-4 bg-emerald-50/90 border-2 border-emerald-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-950 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <span className="font-bold">{approvalNotice.message}</span>
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    Patients can now discover {approvalNotice.docName} in the doctor directory and book telemedicine appointments.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentRole('patient');
+                    setCurrentTab('doctors');
+                  }}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-xs flex items-center gap-1.5"
+                >
+                  <span>View in Patient Directory →</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApprovalNotice(null)}
+                  className="text-emerald-700 hover:text-emerald-950 px-2 py-1 font-semibold"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Priority Pending Verification Queue Banner */}
+          {pendingDoctors.length > 0 && (
+            <div className="p-5 bg-gradient-to-r from-amber-50/90 via-orange-50/80 to-amber-50/90 border-2 border-amber-300 rounded-3xl space-y-3 shadow-xs">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-amber-500 animate-ping" />
+                  <h3 className="text-sm font-extrabold text-amber-950">
+                    Pending Credential Verification Queue ({pendingDoctors.length} applicant{pendingDoctors.length > 1 ? 's' : ''})
+                  </h3>
+                </div>
+                <span className="text-[11px] font-bold text-amber-900 bg-amber-200/90 px-3 py-1 rounded-full border border-amber-300">
+                  Hidden from Public Directory Until Approved
+                </span>
+              </div>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                The practitioners listed below have registered and certified their medical license. Review their credentials and grant approval to immediately publish them to the patient directory:
+              </p>
+
+              <div className="space-y-3 pt-1">
+                {pendingDoctors.map((doc) => (
+                  <div
+                    key={doc.id}
+                    id={`pending-review-card-${doc.id}`}
+                    className="p-4 bg-white rounded-2xl border border-amber-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xs"
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <img
+                        src={doc.avatar}
+                        alt={doc.name}
+                        className="w-14 h-14 rounded-2xl object-cover ring-2 ring-amber-300 shrink-0"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="space-y-1 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-base text-slate-900">{doc.name}</h4>
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded-md">
+                            {doc.specialization}
+                          </span>
+                          <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 font-extrabold uppercase text-[10px] rounded-full border border-amber-300 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-amber-700" /> Pending Admin Approval
+                          </span>
+                        </div>
+                        <div className="text-slate-600">
+                          Medical License Reg: <strong className="font-mono text-slate-900 font-bold">{doc.regNumber}</strong> · Hospital: <span className="font-medium text-slate-800">{doc.hospitalAffiliation}</span>
+                        </div>
+                        <div className="text-slate-500 text-[11px]">
+                          Qualifications: {doc.qualifications.join(', ')} · {doc.experienceYears} yrs experience · Consultation Fee: ${doc.consultationFee}
+                        </div>
+                        {doc.bio && (
+                          <div className="text-slate-500 italic text-[11px] line-clamp-1">
+                            "{doc.bio}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        id={`approve-pending-${doc.id}`}
+                        onClick={() => {
+                          updateDoctorStatus(doc.id, 'approved');
+                          setApprovalNotice({
+                            message: `Dr. ${doc.name} approved! Their profile is now live and published to all patients.`,
+                            docName: doc.name,
+                          });
+                        }}
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs hover:scale-105"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Approve & Publish to Patients</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateDoctorStatus(doc.id, 'suspended');
+                          setApprovalNotice({
+                            message: `Dr. ${doc.name}'s registration application was rejected.`,
+                            docName: doc.name,
+                          });
+                        }}
+                        className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold transition-colors"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Filter Bar */}
+          <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setDoctorStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  doctorStatusFilter === 'all'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All Practitioners ({doctors.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDoctorStatusFilter('pending')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  doctorStatusFilter === 'pending'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'text-amber-800 hover:bg-amber-50'
+                }`}
+              >
+                <span>Pending Approvals</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                  doctorStatusFilter === 'pending' ? 'bg-amber-700 text-white' : 'bg-amber-200 text-amber-900'
+                }`}>
+                  {pendingDoctors.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDoctorStatusFilter('approved')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  doctorStatusFilter === 'approved'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-emerald-700 hover:bg-emerald-50'
+                }`}
+              >
+                Approved & Live ({activeDoctorsCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDoctorStatusFilter('suspended')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  doctorStatusFilter === 'suspended'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'text-rose-700 hover:bg-rose-50'
+                }`}
+              >
+                Suspended ({suspendedDoctors.length})
+              </button>
+            </div>
+          </div>
+
+          {/* List of Doctors */}
           <div className="space-y-4">
-            {doctors.map((doc) => (
+            {doctors
+              .filter((doc) => {
+                if (doctorStatusFilter === 'pending') return doc.status === 'pending';
+                if (doctorStatusFilter === 'approved') return doc.status === 'approved';
+                if (doctorStatusFilter === 'suspended') return doc.status === 'suspended';
+                return true;
+              })
+              .map((doc) => (
               <div
                 key={doc.id}
                 id={`admin-doc-${doc.id}`}
-                className="p-5 rounded-2xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className={`p-5 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                  doc.status === 'pending'
+                    ? 'bg-amber-50/50 border-amber-300'
+                    : doc.status === 'approved'
+                    ? 'bg-white border-slate-200 hover:border-slate-300'
+                    : 'bg-rose-50/40 border-rose-200'
+                }`}
               >
                 <div className="flex items-start gap-4">
                   <img
                     src={doc.avatar}
                     alt={doc.name}
-                    className="w-14 h-14 rounded-2xl object-cover ring-1 ring-slate-200 shrink-0"
+                    className={`w-14 h-14 rounded-2xl object-cover ring-1 shrink-0 ${
+                      doc.status === 'approved' ? 'ring-emerald-200' : 'ring-amber-200'
+                    }`}
                     referrerPolicy="no-referrer"
                   />
                   <div className="space-y-1 text-xs">
@@ -704,7 +931,11 @@ export const AdminDashboard: React.FC = () => {
                             : 'bg-rose-100 text-rose-800'
                         }`}
                       >
-                        {doc.status}
+                        {doc.status === 'approved'
+                          ? 'Approved (Visible to Patients)'
+                          : doc.status === 'pending'
+                          ? 'Pending Admin Verification'
+                          : 'Suspended (Hidden)'}
                       </span>
                     </div>
 
@@ -713,7 +944,7 @@ export const AdminDashboard: React.FC = () => {
                     </div>
 
                     <div className="text-slate-600">
-                      Qualifications: {doc.qualifications.join(', ')} ({doc.experienceYears} yrs experience)
+                      Qualifications: {doc.qualifications.join(', ')} ({doc.experienceYears} yrs experience) · Fee: ${doc.consultationFee}
                     </div>
                   </div>
                 </div>
@@ -724,14 +955,26 @@ export const AdminDashboard: React.FC = () => {
                     <>
                       <button
                         id={`approve-doc-${doc.id}`}
-                        onClick={() => updateDoctorStatus(doc.id, 'approved')}
+                        onClick={() => {
+                          updateDoctorStatus(doc.id, 'approved');
+                          setApprovalNotice({
+                            message: `Dr. ${doc.name} approved! Their profile is now live and published to all patients.`,
+                            docName: doc.name,
+                          });
+                        }}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>Approve & Activate</span>
                       </button>
                       <button
-                        onClick={() => updateDoctorStatus(doc.id, 'suspended')}
+                        onClick={() => {
+                          updateDoctorStatus(doc.id, 'suspended');
+                          setApprovalNotice({
+                            message: `Dr. ${doc.name}'s application was set to suspended.`,
+                            docName: doc.name,
+                          });
+                        }}
                         className="px-3 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-xl text-xs font-semibold"
                       >
                         Reject
@@ -741,7 +984,13 @@ export const AdminDashboard: React.FC = () => {
 
                   {doc.status === 'approved' && (
                     <button
-                      onClick={() => updateDoctorStatus(doc.id, 'suspended')}
+                      onClick={() => {
+                        updateDoctorStatus(doc.id, 'suspended');
+                        setApprovalNotice({
+                          message: `Dr. ${doc.name} suspended. Profile is now hidden from patient directory.`,
+                          docName: doc.name,
+                        });
+                      }}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 rounded-xl text-xs font-semibold transition-colors"
                     >
                       Suspend Account
@@ -750,7 +999,13 @@ export const AdminDashboard: React.FC = () => {
 
                   {doc.status === 'suspended' && (
                     <button
-                      onClick={() => updateDoctorStatus(doc.id, 'approved')}
+                      onClick={() => {
+                        updateDoctorStatus(doc.id, 'approved');
+                        setApprovalNotice({
+                          message: `Dr. ${doc.name} re-instated! Their profile is visible to patients again.`,
+                          docName: doc.name,
+                        });
+                      }}
                       className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-semibold transition-colors"
                     >
                       Re-Instate Account
