@@ -223,10 +223,13 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment, onClose }) =>
       setScreenStream(stream);
       setIsScreenSharing(true);
 
-      stream.getVideoTracks()[0].onended = () => {
-        setIsScreenSharing(false);
-        setScreenStream(null);
-      };
+      const screenTrack = stream.getVideoTracks()[0];
+      if (screenTrack) {
+        screenTrack.onended = () => {
+          setIsScreenSharing(false);
+          setScreenStream(null);
+        };
+      }
     } catch (e) {
       console.warn('Screen share canceled or denied:', e);
     }
@@ -791,9 +794,9 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment, onClose }) =>
           </div>
         </div>
 
-        {/* Slide-in Chat Drawer */}
+        {/* Slide-in Chat Drawer (overlay on phones/tablets, sidebar on desktop) */}
         {showChat && (
-          <div className="w-80 sm:w-96 bg-slate-900 border-l border-slate-800 flex flex-col z-20 shrink-0">
+          <div className="absolute inset-y-0 right-0 w-full max-w-[22rem] sm:max-w-xs md:static md:w-80 md:max-w-none lg:w-96 bg-slate-900 border-l border-slate-800 flex flex-col z-20 shrink-0 shadow-2xl md:shadow-none">
             <div className="p-3.5 border-b border-slate-800 flex items-center justify-between text-xs font-bold">
               <span className="flex items-center gap-1.5 text-white">
                 <MessageSquare className="w-4 h-4 text-blue-400" />
@@ -846,9 +849,9 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment, onClose }) =>
           </div>
         )}
 
-        {/* Slide-in Patient Records Drawer (For doctor or patient reference) */}
+        {/* Slide-in Patient Records Drawer (overlay on phones/tablets, sidebar on desktop) */}
         {showRecords && (
-          <div className="w-80 sm:w-96 bg-slate-900 border-l border-slate-800 flex flex-col z-20 shrink-0">
+          <div className="absolute inset-y-0 right-0 w-full max-w-[22rem] sm:max-w-xs md:static md:w-80 md:max-w-none lg:w-96 bg-slate-900 border-l border-slate-800 flex flex-col z-20 shrink-0 shadow-2xl md:shadow-none">
             <div className="p-3.5 border-b border-slate-800 flex items-center justify-between text-xs font-bold">
               <span className="flex items-center gap-1.5 text-white">
                 <FileText className="w-4 h-4 text-emerald-400" />

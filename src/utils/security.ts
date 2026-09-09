@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 
 // Pre-computed dummy bcrypt hash (work factor 10) used for response timing equalization.
 // This prevents timing-based account enumeration (CWE-204) when an email doesn't exist.
-export const DUMMY_BCRYPT_HASH = '$2a$10$e8w3f8mU3wV8oY4O7Zk2uOU1e5y9lP2wS6q3e7t9m0b2c4d6f8g0h';
+export const DUMMY_BCRYPT_HASH = '$2b$10$1lsOkuEuE7qaxaJh58x1eu9Y9oXxp1SYtG288lFLqF8pBGm.lZkkG';
 
 // Password complexity regex:
 // - At least one uppercase letter [A-Z]
@@ -135,7 +135,7 @@ export const patientRegistrationSchema = z.object({
     .toLowerCase()
     .email('Please enter a valid email address.')
     .max(254),
-  password: passwordSchema.optional().or(z.literal('')),
+  password: passwordSchema,
   phone: z
     .string()
     .max(30)

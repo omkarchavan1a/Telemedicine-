@@ -25,7 +25,6 @@ import {
   Key,
   RefreshCw,
   Check,
-  Sparkles,
   Copy,
   Inbox,
   Send,
@@ -40,6 +39,7 @@ export const AuthModal: React.FC = () => {
     closeAuthModal,
     doctorLogin,
     adminLogin,
+    patientLogin,
     doctorRegister,
     adminRegister,
     patientRegister,
@@ -65,9 +65,9 @@ export const AuthModal: React.FC = () => {
     setRequiresCaptcha(false);
     setCaptchaVerified(false);
     setLockRemaining(0);
-    // Pre-fill email if available (favoring user Gmail)
+    // Pre-fill email if available
     if (!resetEmail) {
-      setResetEmail(currentUser?.email || patientProfile?.email || 'oomkarchavan@gmail.com');
+      setResetEmail(currentUser?.email || patientProfile?.email || '');
     }
   }, [authModalOpen, authModalRole, authModalTab]);
 
@@ -174,17 +174,31 @@ export const AuthModal: React.FC = () => {
 
     if (activeRole === 'patient') {
       setLoading(true);
-      setCurrentRole('patient');
-      setCurrentTab('doctors');
-      setLoading(false);
-      closeAuthModal();
+      try {
+        const captchaToken = captchaVerified ? 'turnstile_token_verified' : undefined;
+        const emailToCheck = (loginEmail || patientProfile?.email || '').trim();
+        const res = await patientLogin(emailToCheck, loginPassword, captchaToken);
+        setLoading(false);
+        if (!res.success) {
+          if (res.requiresCaptcha) setRequiresCaptcha(true);
+          if (res.locked && res.remainingSeconds) setLockRemaining(res.remainingSeconds);
+          setError(res.error || 'Incorrect email or password.');
+        } else {
+          setRequiresCaptcha(false);
+          setCaptchaVerified(false);
+          setLockRemaining(0);
+        }
+      } catch {
+        setLoading(false);
+        setError('Incorrect email or password.');
+      }
       return;
     }
 
     setLoading(true);
 
     try {
-      const captchaToken = captchaVerified ? 'turnstile_token_mock_verified' : undefined;
+      const captchaToken = captchaVerified ? 'turnstile_token_verified' : undefined;
       const res =
         activeRole === 'doctor'
           ? await doctorLogin(loginEmail, loginPassword, captchaToken)
@@ -260,7 +274,7 @@ export const AuthModal: React.FC = () => {
     setError(null);
     setSuccessMsg(null);
 
-    if (patientForm.password && patientConfirmPass && patientForm.password !== patientConfirmPass) {
+    if (patientForm.password !== patientConfirmPass) {
       setError('Passwords do not match. Please verify both password entries.');
       return;
     }
@@ -459,7 +473,7 @@ export const AuthModal: React.FC = () => {
       >
         {/* Header */}
         <div
-          className={`p-6 text-white transition-colors ${
+          className={`p-4 sm:p-6 text-white transition-colors ${
             activeRole === 'patient'
               ? 'bg-gradient-to-r from-emerald-600 via-teal-700 to-cyan-900'
               : activeRole === 'doctor'
@@ -523,7 +537,7 @@ export const AuthModal: React.FC = () => {
               }`}
             >
               <User className="w-3.5 h-3.5" />
-              <span>Patient</span>
+              <span className="max-[400px]:hidden">Patient</span>
             </button>
 
             <button
@@ -541,7 +555,7 @@ export const AuthModal: React.FC = () => {
               }`}
             >
               <Stethoscope className="w-3.5 h-3.5" />
-              <span>Doctor</span>
+              <span className="max-[400px]:hidden">Doctor</span>
             </button>
 
             <button
@@ -559,7 +573,7 @@ export const AuthModal: React.FC = () => {
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Admin</span>
+              <span className="max-[400px]:hidden">Admin</span>
             </button>
           </div>
         </div>
@@ -646,7 +660,7 @@ export const AuthModal: React.FC = () => {
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 max-h-[72vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 modal-scroll">
           {/* Lockout Notification Banner */}
           {lockRemaining > 0 && (
             <div className="mb-4 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-xs text-amber-900">
@@ -712,21 +726,32 @@ export const AuthModal: React.FC = () => {
                         <input
                           type="email"
                           id="auth-patient-login-email"
+                          required
                           value={loginEmail || patientProfile?.email || ''}
                           onChange={(e) => setLoginEmail(e.target.value)}
-                          placeholder="e.g. sarah.jenkins@example.com"
+                          placeholder="e.g. name@example.com"
                           className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700">Password</label>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('forgot')}
+                          className="text-[11px] text-emerald-600 hover:underline cursor-pointer"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
                       <div className="relative">
                         <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                           type={showPassword ? 'text' : 'password'}
                           id="auth-patient-login-password"
+                          required
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
                           placeholder="••••••••••••"
@@ -741,6 +766,25 @@ export const AuthModal: React.FC = () => {
                         </button>
                       </div>
                     </div>
+
+                    {/* CAPTCHA Challenge Widget (triggered after >=3 failed attempts) */}
+                    {requiresCaptcha && (
+                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                        <label className="flex items-center gap-3 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={captchaVerified}
+                            onChange={(e) => setCaptchaVerified(e.target.checked)}
+                            className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                          />
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">Security Verification</p>
+                            <p className="text-[10px] text-slate-500">Please confirm to proceed</p>
+                          </div>
+                        </label>
+                        <ShieldCheck className={`w-5 h-5 ${captchaVerified ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      </div>
+                    )}
 
                     <button
                       type="submit"
@@ -777,7 +821,7 @@ export const AuthModal: React.FC = () => {
                         value={loginEmail}
                         onChange={(e) => setLoginEmail(e.target.value)}
                         placeholder={
-                          activeRole === 'doctor' ? 'e.g. dr.mehta@teledoc.med' : 'e.g. admin@teledoc.med'
+                          activeRole === 'doctor' ? 'e.g. doctor@hospital.org' : 'e.g. admin@organization.org'
                         }
                         className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800"
                       />
@@ -892,7 +936,7 @@ export const AuthModal: React.FC = () => {
                     </label>
                     <JpgAvatarUploader
                       currentAvatar={patientForm.avatar}
-                      userName={patientForm.name || 'Patient'}
+                      fallbackName={patientForm.name || 'Patient'}
                       onAvatarChange={(avatarUrl) => setPatientForm((prev) => ({ ...prev, avatar: avatarUrl }))}
                       label="Upload Patient Profile Picture (JPG only)"
                     />
@@ -909,7 +953,7 @@ export const AuthModal: React.FC = () => {
                           id="auth-patient-name"
                           value={patientForm.name}
                           onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })}
-                          placeholder="e.g. Sarah Jenkins"
+                          placeholder="e.g. Full name"
                           className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
                         />
                       </div>
@@ -925,7 +969,7 @@ export const AuthModal: React.FC = () => {
                           id="auth-patient-email"
                           value={patientForm.email}
                           onChange={(e) => setPatientForm({ ...patientForm, email: e.target.value })}
-                          placeholder="sarah.jenkins@example.com"
+                          placeholder="name@example.com"
                           className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
                         />
                       </div>
@@ -972,19 +1016,21 @@ export const AuthModal: React.FC = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Create Password (Optional)</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Create Password *</label>
                       <input
                         type="password"
+                        required
                         value={patientForm.password || ''}
                         onChange={(e) => setPatientForm({ ...patientForm, password: e.target.value })}
-                        placeholder="At least 6 characters..."
+                        placeholder="Min 8 chars: Aa1@..."
                         className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-800"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Confirm Password</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Confirm Password *</label>
                       <input
                         type="password"
+                        required
                         value={patientConfirmPass}
                         onChange={(e) => setPatientConfirmPass(e.target.value)}
                         placeholder="Repeat password..."
@@ -1019,7 +1065,7 @@ export const AuthModal: React.FC = () => {
                     </label>
                     <JpgAvatarUploader
                       currentAvatar={doctorForm.avatar}
-                      userName={doctorForm.name || 'Doctor'}
+                      fallbackName={doctorForm.name || 'Doctor'}
                       onAvatarChange={(avatarUrl) => setDoctorForm((prev) => ({ ...prev, avatar: avatarUrl }))}
                       label="Upload Official Doctor Headshot (JPG only)"
                     />
@@ -1050,7 +1096,7 @@ export const AuthModal: React.FC = () => {
                           required
                           value={doctorForm.email}
                           onChange={(e) => setDoctorForm({ ...doctorForm, email: e.target.value })}
-                          placeholder="jane.smith@hospital.org"
+                          placeholder="doctor@hospital.org"
                           className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800"
                         />
                       </div>
@@ -1211,7 +1257,7 @@ export const AuthModal: React.FC = () => {
                         required
                         value={adminForm.name}
                         onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })}
-                        placeholder="Alex Vance"
+                        placeholder="Full name"
                         className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:bg-white text-slate-800"
                       />
                     </div>
@@ -1222,7 +1268,7 @@ export const AuthModal: React.FC = () => {
                         required
                         value={adminForm.email}
                         onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
-                        placeholder="alex.vance@teledoc.med"
+                        placeholder="admin@organization.org"
                         className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:bg-white text-slate-800"
                       />
                     </div>
@@ -1368,55 +1414,6 @@ export const AuthModal: React.FC = () => {
 
               {resetMode === 'with_old_password' ? (
                 <div>
-                  {/* Quick Demo Autofill Chips */}
-                  <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-amber-500" />
-                        Quick Test Accounts (Autofill Email & Old Pass)
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setResetEmail('dr.mehta@teledoc.med');
-                          setResetOldPassword('Doctor@2026!');
-                          setError(null);
-                        }}
-                        className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-slate-200 hover:border-blue-300 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-1 shadow-2xs"
-                      >
-                        <span>🩺 Dr. Mehta</span>
-                        <span className="text-[10px] text-slate-400">(Doctor@2026!)</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setResetEmail('admin@teledoc.med');
-                          setResetOldPassword('Admin@2026!');
-                          setError(null);
-                        }}
-                        className="px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 border border-slate-200 hover:border-purple-300 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-1 shadow-2xs"
-                      >
-                        <span>🛡️ Admin</span>
-                        <span className="text-[10px] text-slate-400">(Admin@2026!)</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setResetEmail('anjali.sharma@example.com');
-                          setResetOldPassword('Patient@2026!');
-                          setError(null);
-                        }}
-                        className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-1 shadow-2xs"
-                      >
-                        <span>👤 Patient Anjali</span>
-                        <span className="text-[10px] text-slate-400">(Patient@2026!)</span>
-                      </button>
-                    </div>
-                  </div>
 
                   <form onSubmit={handleResetWithOldPasswordSubmit} className="space-y-4">
                     {/* 1. Gmail / Account Email */}
@@ -1435,7 +1432,7 @@ export const AuthModal: React.FC = () => {
                           required
                           value={resetEmail}
                           onChange={(e) => setResetEmail(e.target.value)}
-                          placeholder="e.g. oomkarchavan@gmail.com or name@organization.med"
+                          placeholder="e.g. name@gmail.com or name@organization.org"
                           className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white text-slate-800 transition-colors"
                         />
                       </div>
@@ -1659,7 +1656,7 @@ export const AuthModal: React.FC = () => {
                               required
                               value={resetEmail}
                               onChange={(e) => setResetEmail(e.target.value)}
-                              placeholder="e.g. oomkarchavan@gmail.com"
+                              placeholder="e.g. name@gmail.com"
                               className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:bg-white text-slate-800 font-medium transition-colors"
                             />
                           </div>

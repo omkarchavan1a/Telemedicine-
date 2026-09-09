@@ -50,23 +50,34 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return today.toISOString().split('T')[0];
   });
 
-  const [selectedSlot, setSelectedSlot] = useState<string>('10:00 AM');
-  const [patientName, setPatientName] = useState(prefilledBookingData?.patientName || patientProfile?.name || 'Anjali Sharma');
-  const [patientEmail, setPatientEmail] = useState(prefilledBookingData?.patientEmail || patientProfile?.email || 'anjali.sharma@example.com');
-  const [reason, setReason] = useState(prefilledBookingData?.reason || 'Routine consultation & general checkup');
+  const [selectedSlot, setSelectedSlot] = useState<string>('');
+  const [patientName, setPatientName] = useState(prefilledBookingData?.patientName || patientProfile?.name || '');
+  const [patientEmail, setPatientEmail] = useState(prefilledBookingData?.patientEmail || patientProfile?.email || '');
+  const [reason, setReason] = useState(prefilledBookingData?.reason || '');
   const [symptoms, setSymptoms] = useState(prefilledBookingData?.symptoms || '');
   const [paymentMethod, setPaymentMethod] = useState<'Credit/Debit Card' | 'UPI' | 'Net Banking'>('Credit/Debit Card');
 
   // Simulated Payment Form fields
-  const [cardHolder, setCardHolder] = useState(prefilledBookingData?.patientName || patientProfile?.name || 'Anjali Sharma');
-  const [cardNumber, setCardNumber] = useState('4242 •••• •••• 4242');
-  const [cardExpiry, setCardExpiry] = useState('12/28');
-  const [cardCvc, setCardCvc] = useState('987');
-  const [upiId, setUpiId] = useState('anjali.sharma@okaxis');
+  const [cardHolder, setCardHolder] = useState(prefilledBookingData?.patientName || patientProfile?.name || '');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [upiId, setUpiId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [confirmedApt, setConfirmedApt] = useState<Appointment | null>(null);
 
   const [formError, setFormError] = useState<string>('');
+  const [payError, setPayError] = useState<string>('');
+  const payTimerRef = React.useRef<number | null>(null);
+
+  // Clear pending payment callback on unmount
+  useEffect(() => {
+    return () => {
+      if (payTimerRef.current !== null) {
+        window.clearTimeout(payTimerRef.current);
+      }
+    };
+  }, []);
 
   const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -159,6 +170,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setFormError('Please select an available appointment time slot.');
       return;
     }
+    if (!availableSlots.includes(selectedSlot)) {
+      setFormError('The selected slot is no longer available. Please choose another time.');
+      setSelectedSlot('');
+      return;
+    }
+    if (!patientName.trim()) {
+      setFormError('Please enter the patient name for this booking.');
+      return;
+    }
+    if (!patientEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail.trim())) {
+      setFormError('Please enter a valid patient email address for booking confirmations.');
+      return;
+    }
     if (!reason.trim()) {
       setFormError('Please specify the primary reason for your consultation.');
       return;
@@ -175,47 +199,93 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   const handleRetryPayment = () => {
+    setPayError('');
     setTimeLeft(300);
     setPaymentSessionStatus('active');
     setStep(2);
   };
 
   const handleConfirmAndPay = () => {
+    setPayError('');
     if (timeLeft <= 0 || paymentSessionStatus === 'expired') {
       setPaymentSessionStatus('expired');
       return;
     }
 
+    // Validate payment instrument before authorizing
+    if (paymentMethod === 'Credit/Debit Card') {
+      const digits = cardNumber.replace(/\D/g, '');
+      if (digits.length < 12 || digits.length > 19) {
+        setPayError('Please enter a valid card number (12–19 digits).');
+        return;
+      }
+      const expiryMatch = cardExpiry.trim().match(/^(0[1-9]|1[0-2])\/(\d{2})$/);
+      if (!expiryMatch) {
+        setPayError('Please enter the card expiry as MM/YY.');
+        return;
+      }
+      const expYear = 2000 + Number(expiryMatch[2]);
+      const expMonth = Number(expiryMatch[1]);
+      const now = new Date();
+      if (expYear < now.getFullYear() || (expYear === now.getFullYear() && expMonth < now.getMonth() + 1)) {
+        setPayError('This card has expired. Please use a valid card.');
+        return;
+      }
+      if (!/^\d{3,4}$/.test(cardCvc.trim())) {
+        setPayError('Please enter the 3–4 digit CVV / CVC.');
+        return;
+      }
+      if (!cardHolder.trim()) {
+        setPayError('Please enter the cardholder name.');
+        return;
+      }
+    } else {
+      if (!/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(upiId.trim())) {
+        setPayError('Please enter a valid UPI ID (e.g. name@bank).');
+        return;
+      }
+    }
+
     setIsProcessing(true);
 
     // Simulate reliable payment gateway interaction
-    setTimeout(() => {
-      const apt = bookAppointment({
-        doctorId: doctor.id,
-        date: selectedDate,
-        timeSlot: selectedSlot,
-        reason,
-        symptoms,
-        paymentMethod,
-        amount: doctor.consultationFee,
-        patientName,
-        patientEmail,
-      });
-
-      setIsProcessing(false);
-      setConfirmedApt(apt);
-      setPaymentSessionStatus('success');
-      setStep(3);
-
-      // Trigger celebratory confetti on confirmed booking
+    payTimerRef.current = window.setTimeout(() => {
+      // Session may have expired or been cancelled while authorizing
+      if (paymentSessionStatus !== 'active') {
+        setIsProcessing(false);
+        return;
+      }
       try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
+        const apt = bookAppointment({
+          doctorId: doctor.id,
+          date: selectedDate,
+          timeSlot: selectedSlot,
+          reason: reason.trim(),
+          symptoms: symptoms.trim(),
+          paymentMethod,
+          amount: doctor.consultationFee,
+          patientName: patientName.trim(),
+          patientEmail: patientEmail.trim(),
         });
-      } catch {
-        // Safe fallback
+
+        setIsProcessing(false);
+        setConfirmedApt(apt);
+        setPaymentSessionStatus('success');
+        setStep(3);
+
+        // Trigger celebratory confetti on confirmed booking
+        try {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 },
+          });
+        } catch {
+          // Safe fallback
+        }
+      } catch (err) {
+        setIsProcessing(false);
+        setPayError(err instanceof Error ? err.message : 'Payment authorization failed. Please try again.');
       }
     }, 1200);
   };
@@ -680,7 +750,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
                     Select Payment Gateway (5 Min Session Active)
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-2">
                     <button
                       type="button"
                       id="pay-method-card"
@@ -723,12 +793,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         <span className="text-xs font-bold tracking-wider text-blue-300">VISA / MC</span>
                       </div>
                       <div className="font-mono text-base tracking-widest text-slate-100 font-semibold">
-                        {cardNumber || '4242 •••• •••• 4242'}
+                        {cardNumber || '•••• •••• •••• ••••'}
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-slate-300">
                         <div>
                           <div className="text-[8px] uppercase tracking-wider text-slate-400">Cardholder</div>
-                          <div className="font-bold text-white uppercase">{cardHolder || 'Anjali Sharma'}</div>
+                          <div className="font-bold text-white uppercase">{cardHolder || 'CARD HOLDER'}</div>
                         </div>
                         <div>
                           <div className="text-[8px] uppercase tracking-wider text-slate-400">Expires</div>
@@ -883,6 +953,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <Shield className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span>256-Bit SSL Encrypted Healthcare Checkout. Zero card details stored in plaintext.</span>
                 </div>
+
+                {payError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{payError}</span>
+                  </div>
+                )}
 
                 {/* Bottom Action Controls with explicit Cancel and Pay buttons */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">

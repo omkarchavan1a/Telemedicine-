@@ -164,6 +164,19 @@ interface AppContextType {
     remainingSeconds?: number;
     delayMs?: number;
   }>;
+  patientLogin: (
+    email: string,
+    pass: string,
+    captchaToken?: string
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    requiresCaptcha?: boolean;
+    locked?: boolean;
+    remainingSeconds?: number;
+    delayMs?: number;
+  }>;
+  updateAdminProfile: (updates: { name?: string; phone?: string }) => void;
   doctorRegister: (input: DoctorRegistrationInput) => Promise<{ success: boolean; error?: string }>;
   adminRegister: (input: AdminRegistrationInput) => Promise<{ success: boolean; error?: string }>;
   patientRegister: (input: PatientRegistrationInput) => Promise<{ success: boolean; error?: string }>;
@@ -188,7 +201,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEY_PREFIX = 'teledoc_v1_';
+const STORAGE_KEY_PREFIX = 'teledoc_v2_';
 
 function loadStorage<T>(key: string, fallback: T): T {
   try {
@@ -230,7 +243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   // Active view states
-  const [currentTab, setCurrentTab] = useState<string>('doctors');
+  const [currentTab, setCurrentTab] = useState<string>('home');
   const [activeVideoAppointment, setActiveVideoAppointment] = useState<Appointment | null>(null);
   const [bookingDoctor, setBookingDoctor] = useState<DoctorProfile | null>(null);
   const [prefilledBookingData, setPrefilledBookingData] = useState<{
@@ -252,19 +265,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadStorage<User | null>('auth_admin', null)
   );
   const [providerPasswords, setProviderPasswords] = useState<Record<string, string>>(() => {
-    const defaultHashes: Record<string, string> = {
-      'dr.mehta@teledoc.med': hashPassword('Doctor@2026!'),
-      'dr.jenkins@teledoc.med': hashPassword('Doctor@2026!'),
-      'dr.khan@teledoc.med': hashPassword('Doctor@2026!'),
-      'admin@teledoc.med': hashPassword('Admin@2026!'),
-      'anjali.sharma@example.com': hashPassword('Patient@2026!'),
-    };
+    const defaultHashes: Record<string, string> = {};
     const loaded = loadStorage<Record<string, string>>('provider_passwords', defaultHashes);
-    // Transparent migration: if any password is plain text or legacy, hash it with bcrypt!
+    // Transparent migration: hash any legacy plain-text entries.
     const upgraded: Record<string, string> = { ...loaded };
     for (const [email, pass] of Object.entries(upgraded)) {
-      if (!/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(pass)) {
-        upgraded[email] = hashPassword(pass || 'Doctor@2026!');
+      if (!pass) {
+        delete upgraded[email];
+      } else if (!/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(pass)) {
+        upgraded[email] = hashPassword(pass);
       }
     }
     return upgraded;
@@ -343,8 +352,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setCurrentRole = (role: UserRole) => {
     if (role === 'patient') {
-      switchUser('user-patient-1');
-      setCurrentTab('doctors');
+      switchUser('user-guest');
+      setCurrentTab('home');
     } else if (role === 'doctor') {
       if (!authDoctor) {
         openAuthModal('doctor', 'login');
@@ -447,10 +456,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 7. Constant-Time Bcrypt Password Verification
-    const storedHash = providerPasswords[cleanEmail] || hashPassword('Doctor@2026!');
-    const isPasswordCorrect =
-      verifyPassword(pass, storedHash) ||
-      (pass === 'doctor123' && (verifyPassword('doctor123', storedHash) || verifyPassword('Doctor@2026!', storedHash)));
+    const storedHash = providerPasswords[cleanEmail];
+    if (!storedHash) {
+      verifyPassword(pass, DUMMY_BCRYPT_HASH);
+      const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
+      addAuditLog('SECURITY_AUTH_FAILED', cleanEmail, `Failed login attempt (${failCount}/5).`);
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        requiresCaptcha: securityStore.requiresCaptcha(cleanEmail),
+        locked: lockedNow,
+        remainingSeconds: lockedNow ? 15 * 60 : 0,
+        delayMs,
+      };
+    }
+    const isPasswordCorrect = verifyPassword(pass, storedHash);
 
     if (!isPasswordCorrect) {
       const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
@@ -559,7 +579,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 6. Timing Equalization
     let foundAdmin = INITIAL_USERS.find((u) => u.role === 'admin' && u.email.toLowerCase() === cleanEmail);
-    const storedHash = providerPasswords[cleanEmail] || (cleanEmail === 'admin@teledoc.med' ? hashPassword('Admin@2026!') : null);
+    const storedHash = providerPasswords[cleanEmail];
 
     if (!storedHash) {
       verifyPassword(pass, DUMMY_BCRYPT_HASH);
@@ -576,9 +596,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 7. Constant-Time Bcrypt Verification
-    const isPasswordCorrect =
-      verifyPassword(pass, storedHash) ||
-      (pass === 'admin123' && (verifyPassword('admin123', storedHash) || verifyPassword('Admin@2026!', storedHash)));
+    const isPasswordCorrect = verifyPassword(pass, storedHash);
 
     if (!isPasswordCorrect) {
       const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
@@ -604,11 +622,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!foundAdmin) {
       foundAdmin = {
         id: `user-admin-session-${Date.now().toString(36)}`,
-        name: 'Platform Ops (Admin)',
+        name: 'Administrator',
         email: cleanEmail,
         role: 'admin',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        phone: '+1 (555) 000-8811',
+        avatar: '',
+        phone: '',
       };
     }
 
@@ -619,6 +637,142 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthModalOpen(false);
     addAuditLog('AUTH_LOGIN_SUCCESS', foundAdmin.name, 'Administrator clearance verified.');
     return { success: true };
+  };
+
+  const patientLogin = async (
+    email: string,
+    pass: string,
+    captchaToken?: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    requiresCaptcha?: boolean;
+    locked?: boolean;
+    remainingSeconds?: number;
+    delayMs?: number;
+  }> => {
+    // 1. IP Rate Limiting (max 10 requests / min / IP)
+    const rateLimit = securityStore.checkRateLimit('client-ip');
+    if (!rateLimit.allowed) {
+      addAuditLog('SECURITY_RATE_LIMIT_EXCEEDED', email || 'Anonymous', 'Client IP exceeded 10 login requests per minute.');
+      return {
+        success: false,
+        error: 'Too many requests. Please try again later.',
+      };
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 2. Account Lockout Check (5 failed attempts -> 15 min lockout)
+    const lockout = securityStore.isAccountLocked(cleanEmail);
+    if (lockout.locked) {
+      await delayAsync(1000);
+      addAuditLog('SECURITY_LOCKED_ATTEMPT', cleanEmail, `Attempt against locked account (${lockout.remainingSeconds}s remaining).`);
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        locked: true,
+        remainingSeconds: lockout.remainingSeconds,
+      };
+    }
+
+    // 3. Progressive Delay Schedule
+    const delayMs = securityStore.getProgressiveDelayMs(cleanEmail);
+    if (delayMs > 0) {
+      await delayAsync(delayMs);
+    }
+
+    // 4. CAPTCHA Check (triggered on >= 3 failures)
+    if (securityStore.requiresCaptcha(cleanEmail) && !captchaToken) {
+      return {
+        success: false,
+        error: 'Security verification required. Please complete the CAPTCHA.',
+        requiresCaptcha: true,
+        delayMs,
+      };
+    }
+
+    // 5. Server-Side Zod Validation
+    const validation = loginInputSchema.safeParse({ email: cleanEmail, password: pass, captchaToken });
+    if (!validation.success) {
+      return { success: false, error: 'Incorrect email or password.' };
+    }
+
+    // 6. Timing Equalization for Non-Existent Accounts (CWE-204 Defense)
+    const storedHash = providerPasswords[cleanEmail];
+    if (!storedHash) {
+      verifyPassword(pass, DUMMY_BCRYPT_HASH);
+      const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
+      addAuditLog('SECURITY_AUTH_FAILED', cleanEmail, `Failed patient login attempt (${failCount}/5).`);
+      return {
+        success: false,
+        error: 'No patient account found with this email. Please register first.',
+        requiresCaptcha: securityStore.requiresCaptcha(cleanEmail),
+        locked: lockedNow,
+        remainingSeconds: lockedNow ? 15 * 60 : 0,
+        delayMs,
+      };
+    }
+
+    // 7. Constant-Time Bcrypt Password Verification
+    const isPasswordCorrect = verifyPassword(pass, storedHash);
+    if (!isPasswordCorrect) {
+      const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
+      if (lockedNow) {
+        addAuditLog(
+          'SECURITY_ACCOUNT_LOCKED',
+          cleanEmail,
+          'Patient account locked for 15 minutes due to 5 consecutive failed login attempts.'
+        );
+      } else {
+        addAuditLog('SECURITY_AUTH_FAILED', cleanEmail, `Failed patient password attempt (${failCount}/5).`);
+      }
+      return {
+        success: false,
+        error: 'Incorrect email or password.',
+        requiresCaptcha: securityStore.requiresCaptcha(cleanEmail),
+        locked: lockedNow,
+        remainingSeconds: lockedNow ? 15 * 60 : 0,
+        delayMs,
+      };
+    }
+
+    // Success: sign in linked patient profile (or a session identity for this email)
+    securityStore.recordSuccessfulLogin(cleanEmail);
+    const linkedProfile =
+      patientProfile.email.toLowerCase() === cleanEmail
+        ? patientProfile
+        : { ...INITIAL_PATIENT_PROFILE, email: cleanEmail };
+    const patientUser: User = {
+      id: linkedProfile.userId,
+      name: linkedProfile.name || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      role: 'patient',
+      avatar: linkedProfile.avatar,
+      phone: linkedProfile.phone,
+    };
+    setCurrentUser(patientUser);
+    setCurrentTab('home');
+    setAuthModalOpen(false);
+    addAuditLog('AUTH_LOGIN_SUCCESS', patientUser.name, 'Patient successfully authenticated.');
+    return { success: true };
+  };
+
+  const updateAdminProfile = (updates: { name?: string; phone?: string }) => {
+    if (!authAdmin) return;
+    const cleanName = updates.name !== undefined ? sanitizePlainText(updates.name, 70) : undefined;
+    const cleanPhone = updates.phone !== undefined ? sanitizePlainText(updates.phone, 30) : undefined;
+    setAuthAdmin((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        ...(cleanName ? { name: cleanName } : {}),
+        ...(cleanPhone !== undefined ? { phone: cleanPhone } : {}),
+      };
+      setCurrentUser(next);
+      return next;
+    });
+    addAuditLog('ADMIN_PROFILE_UPDATED', authAdmin.email, 'Administrator updated profile details.');
   };
 
   const doctorRegister = async (input: DoctorRegistrationInput): Promise<{ success: boolean; error?: string }> => {
@@ -653,7 +807,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       avatar:
         input.avatar ||
         validData.avatar ||
-        'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=200&auto=format&fit=crop&q=80',
+        '',
       specialization: validData.specialization,
       qualifications: validData.qualifications ? validData.qualifications.split(',').map((q) => q.trim()) : ['MBBS', 'MD'],
       experienceYears: Number(validData.experienceYears) || 5,
@@ -708,10 +862,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const validData = parseResult.data;
     const cleanEmail = validData.email.toLowerCase();
 
-    const validPasscodes = ['TELEDOC-ADMIN-2026', 'ADMIN', 'ADMIN2026', 'SECURITY', 'TELEDOC'];
-    const enteredPasscode = validData.adminPasscode.toUpperCase();
-    if (!validPasscodes.includes(enteredPasscode) && validData.adminPasscode.length < 4) {
-      return { success: false, error: 'Administrative passcode must be at least 4 characters.' };
+    const validPasscodes = ['TELEDOC-ADMIN-2026', 'TELEDOC-BOARD-2026', 'MED-BOARD-SECURE-2026'];
+    const enteredPasscode = validData.adminPasscode.trim().toUpperCase();
+    if (!validPasscodes.includes(enteredPasscode)) {
+      addAuditLog('SECURITY_ADMIN_PASSCODE_REJECTED', cleanEmail, 'Invalid administrative enrollment passcode.');
+      return { success: false, error: 'Invalid administrative passcode. Contact the medical board for enrollment.' };
     }
 
     // 2. Hash Password with Salted Bcrypt (Cost 10)
@@ -722,8 +877,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: validData.name,
       email: cleanEmail,
       role: 'admin',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      phone: validData.phone || '+1 (555) 000-8811',
+      avatar: '',
+      phone: validData.phone || '',
     };
 
     setProviderPasswords((prev) => ({ ...prev, [cleanEmail]: secureHash }));
@@ -752,11 +907,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const validData = parseResult.data;
     const cleanEmail = validData.email.toLowerCase();
 
-    // Use uploaded JPG avatar if provided, otherwise default avatar
+    // Use uploaded JPG avatar if provided, otherwise no avatar (initials fallback)
     const avatarUrl =
       input.avatar ||
       validData.avatar ||
-      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80';
+      '';
 
     const newPatientId = `user-patient-${Date.now().toString(36)}`;
     const newPatient: PatientProfile = {
@@ -764,17 +919,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userId: newPatientId,
       name: validData.name,
       email: cleanEmail,
-      phone: validData.phone || '+1 (555) 234-5678',
+      phone: validData.phone || '',
       avatar: avatarUrl,
-      dateOfBirth: validData.dateOfBirth || '1995-06-15',
+      dateOfBirth: validData.dateOfBirth || '',
       gender: validData.gender || 'Female',
       bloodGroup: validData.bloodGroup || 'O+',
     };
 
-    if (validData.password) {
-      const secureHash = hashPassword(validData.password);
-      setProviderPasswords((prev) => ({ ...prev, [cleanEmail]: secureHash }));
-    }
+    const securePatientHash = hashPassword(validData.password);
+    setProviderPasswords((prev) => ({ ...prev, [cleanEmail]: securePatientHash }));
 
     setPatientProfile(newPatient);
 
@@ -788,8 +941,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setCurrentUser(patientUser);
-    setCurrentRole('patient');
-    setCurrentTab('doctors');
+    setCurrentTab('home');
     setAuthModalOpen(false);
 
     addAuditLog(
@@ -896,27 +1048,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await delayAsync(300);
 
     // 4. Retrieve stored hash for this email
-    let storedHash = providerPasswords[cleanEmail];
-    if (!storedHash) {
-      if (cleanEmail === 'admin@teledoc.med') {
-        storedHash = hashPassword('Admin@2026!');
-      } else if (
-        cleanEmail === 'dr.mehta@teledoc.med' ||
-        cleanEmail === 'dr.jenkins@teledoc.med' ||
-        cleanEmail === 'dr.khan@teledoc.med'
-      ) {
-        storedHash = hashPassword('Doctor@2026!');
-      } else if (cleanEmail === 'anjali.sharma@example.com') {
-        storedHash = hashPassword('Patient@2026!');
-      } else {
-        const foundDoc = doctors.find((d) => d.email.toLowerCase() === cleanEmail);
-        if (foundDoc) {
-          storedHash = hashPassword('Doctor@2026!');
-        } else if (currentUser.email.toLowerCase() === cleanEmail) {
-          storedHash = hashPassword('Patient@2026!');
-        }
-      }
-    }
+    const storedHash = providerPasswords[cleanEmail];
 
     // If account not found in system:
     if (!storedHash) {
@@ -929,15 +1061,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // 5. Verify Old Password (constant-time bcrypt with fallback for demo convenience)
-    const isOldPasswordCorrect =
-      verifyPassword(oldPassword, storedHash) ||
-      (oldPassword === 'doctor123' &&
-        (verifyPassword('doctor123', storedHash) || verifyPassword('Doctor@2026!', storedHash))) ||
-      (oldPassword === 'admin123' &&
-        (verifyPassword('admin123', storedHash) || verifyPassword('Admin@2026!', storedHash))) ||
-      (oldPassword === 'patient123' &&
-        (verifyPassword('patient123', storedHash) || verifyPassword('Patient@2026!', storedHash)));
+    // 5. Verify Old Password (constant-time bcrypt)
+    const isOldPasswordCorrect = verifyPassword(oldPassword, storedHash);
 
     if (!isOldPasswordCorrect) {
       const { lockedNow, failCount } = securityStore.recordFailedAttempt(cleanEmail);
@@ -983,8 +1108,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const previousRole = currentUser.role;
     setAuthDoctor(null);
     setAuthAdmin(null);
-    switchUser('user-patient-1');
-    setCurrentTab('doctors');
+    switchUser('user-guest');
+    setCurrentTab('home');
     addAuditLog('AUTH_LOGOUT', previousName, `Provider ${previousRole} session terminated, returned to public patient view.`);
   };
 
@@ -1066,19 +1191,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     patientEmail?: string;
   }): Appointment => {
     const doc = doctors.find((d) => d.id === data.doctorId);
-    if (doc && doc.status !== 'approved') {
+    if (!doc) {
+      throw new Error('Selected doctor profile was not found. Please choose another doctor.');
+    }
+    if (doc.status !== 'approved') {
       throw new Error(`Dr. ${doc.name}'s profile is currently ${doc.status} and cannot accept patient bookings until approved by platform administration.`);
     }
+    if (!data.date || !data.timeSlot) {
+      throw new Error('A consultation date and time slot are required to confirm booking.');
+    }
+    if (!data.reason || !data.reason.trim()) {
+      throw new Error('Please specify the primary reason for your consultation.');
+    }
+    // Atomic double-booking guard: slot must still be free at confirm time
+    const slotTaken = appointments.some(
+      (a) => a.doctorId === data.doctorId && a.date === data.date && a.timeSlot === data.timeSlot && a.status !== 'cancelled'
+    );
+    if (slotTaken) {
+      throw new Error('This slot was just booked by another patient. Please select a different time.');
+    }
+    // Amount is always derived from the doctor's current fee (never trust caller-supplied totals)
+    const amount = doc.consultationFee;
     const txnId = `TXN-${Math.floor(1000000 + Math.random() * 9000000)}`;
     const newApt: Appointment = {
       id: `apt-${Date.now()}`,
       patientId: currentUser.id,
-      patientName: data.patientName || patientProfile.name,
-      patientEmail: data.patientEmail || patientProfile.email,
+      patientName: (data.patientName || patientProfile.name || 'Patient').trim() || 'Patient',
+      patientEmail: (data.patientEmail || patientProfile.email || '').trim(),
       doctorId: data.doctorId,
-      doctorName: doc ? doc.name : 'Consultant Doctor',
-      doctorSpecialization: doc ? doc.specialization : 'General Medicine',
-      doctorAvatar: doc ? doc.avatar : 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150',
+      doctorName: doc.name,
+      doctorSpecialization: doc.specialization,
+      doctorAvatar: doc.avatar,
       date: data.date,
       timeSlot: data.timeSlot,
       reason: data.reason,
@@ -1087,7 +1230,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentStatus: 'paid',
       paymentMethod: data.paymentMethod,
       transactionId: txnId,
-      amount: data.amount,
+      amount,
       videoRoomId: `room-${currentUser.id.slice(-4)}-${data.doctorId}-${Date.now().toString(36)}`,
       createdAt: new Date().toISOString(),
     };
@@ -1096,7 +1239,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog(
       'APPOINTMENT_CONFIRMED',
       `${newApt.doctorName} on ${newApt.date} at ${newApt.timeSlot}`,
-      `Atomic booking confirmed. Transaction ${txnId} verified ($${data.amount}).`
+      `Atomic booking confirmed. Transaction ${txnId} verified ($${amount}).`
     );
     return newApt;
   };
@@ -1106,13 +1249,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reason: string,
     cancelledBy: 'patient' | 'doctor' | 'admin'
   ) => {
+    const target = appointments.find((a) => a.id === appointmentId);
+    if (!target) {
+      throw new Error('Appointment was not found. It may have been removed already.');
+    }
+    if (target.status === 'cancelled' || target.status === 'completed' || target.status === 'no_show') {
+      throw new Error(`This appointment is already ${target.status.replace('_', ' ')} and cannot be cancelled again.`);
+    }
+    if (!reason || !reason.trim()) {
+      throw new Error('Please provide a brief reason for the cancellation.');
+    }
     setAppointments((prev) =>
       prev.map((apt) => {
         if (apt.id === appointmentId) {
           return {
             ...apt,
             status: 'cancelled',
-            cancellationReason: reason,
+            cancellationReason: reason.trim(),
             cancelledBy,
             paymentStatus: 'refunded',
           };
@@ -1123,11 +1276,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog(
       'APPOINTMENT_CANCELLED',
       appointmentId,
-      `Cancelled by ${cancelledBy}. Reason: "${reason}". Automated refund triggered.`
+      `Cancelled by ${cancelledBy}. Reason: "${reason.trim()}". Automated refund triggered.`
     );
   };
 
+  const APPOINTMENT_TRANSITIONS: Record<Appointment['status'], Appointment['status'][]> = {
+    scheduled: ['in_waiting_room', 'in_consultation', 'completed', 'cancelled', 'no_show'],
+    in_waiting_room: ['in_consultation', 'completed', 'cancelled', 'no_show'],
+    in_consultation: ['completed', 'cancelled'],
+    completed: [],
+    cancelled: [],
+    no_show: [],
+  };
+
   const updateAppointmentStatus = (appointmentId: string, status: Appointment['status']) => {
+    const target = appointments.find((a) => a.id === appointmentId);
+    if (!target) return;
+    if (target.status === status) return;
+    const allowed = APPOINTMENT_TRANSITIONS[target.status] || [];
+    if (!allowed.includes(status)) {
+      addAuditLog('APPOINTMENT_STATUS_REJECTED', appointmentId, `Illegal transition ${target.status} -> ${status} blocked.`);
+      return;
+    }
     setAppointments((prev) =>
       prev.map((apt) => (apt.id === appointmentId ? { ...apt, status } : apt))
     );
@@ -1135,9 +1305,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const submitRating = (appointmentId: string, rating: number, comment?: string) => {
+    const target = appointments.find((a) => a.id === appointmentId);
+    if (!target || target.status !== 'completed') return;
+    if (target.ratingGiven != null) return; // one rating per appointment
+    const safeRating = Math.min(5, Math.max(1, Math.round(rating)));
     setAppointments((prev) =>
       prev.map((apt) =>
-        apt.id === appointmentId ? { ...apt, ratingGiven: rating, reviewComment: comment } : apt
+        apt.id === appointmentId ? { ...apt, ratingGiven: safeRating, reviewComment: comment } : apt
       )
     );
     // Update doctor's aggregate rating
@@ -1158,8 +1332,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const issuePrescription = (prescriptionData: Omit<Prescription, 'id' | 'issuedAt'>): Prescription => {
+    if (!prescriptionData.diagnosis || !prescriptionData.diagnosis.trim()) {
+      throw new Error('A clinical diagnosis is required to issue a prescription.');
+    }
+    const namedMeds = (prescriptionData.medications || []).filter((m) => m.name && m.name.trim());
+    if (namedMeds.length === 0) {
+      throw new Error('At least one medication with a name is required.');
+    }
     const newRx: Prescription = {
       ...prescriptionData,
+      diagnosis: prescriptionData.diagnosis.trim(),
+      medications: namedMeds,
       id: `rx-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`,
       issuedAt: new Date().toISOString(),
     };
@@ -1182,8 +1365,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const uploadHealthRecord = (recordData: Omit<HealthRecord, 'id' | 'uploadedAt'>) => {
+    if (!recordData.title || !recordData.title.trim()) {
+      throw new Error('A document title is required.');
+    }
     const newRec: HealthRecord = {
       ...recordData,
+      title: recordData.title.trim(),
       id: `rec-${Date.now()}`,
       uploadedAt: new Date().toISOString(),
     };
@@ -1197,9 +1384,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog('HEALTH_RECORD_DELETED', rec ? rec.title : recordId, 'Record deleted by patient.');
   };
 
+  const clamp = (v: number, min: number, max: number, fallback: number) =>
+    Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+
   const addVitalMeasurement = (vitalData: Omit<VitalMeasurement, 'id'>) => {
+    if (!vitalData.date) {
+      throw new Error('A measurement date is required.');
+    }
     const newVit: VitalMeasurement = {
-      ...vitalData,
+      patientId: vitalData.patientId,
+      date: vitalData.date,
+      bpSystolic: clamp(vitalData.bpSystolic, 50, 300, 120),
+      bpDiastolic: clamp(vitalData.bpDiastolic, 30, 200, 80),
+      heartRate: clamp(vitalData.heartRate, 20, 250, 72),
+      bloodSugar: clamp(vitalData.bloodSugar, 20, 1000, 90),
+      weight: clamp(vitalData.weight, 1, 500, 60),
       id: `vit-${Date.now()}`,
     };
     setVitals((prev) => [...prev, newVit]);
@@ -1207,8 +1406,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updatePlatformConfig = (updated: Partial<PlatformConfig>) => {
-    setPlatformConfig((prev) => ({ ...prev, ...updated }));
-    addAuditLog('PLATFORM_CONFIG_UPDATED', 'Global Configuration', JSON.stringify(updated));
+    const safe: Partial<PlatformConfig> = { ...updated };
+    if (safe.platformCommissionPercent !== undefined) {
+      safe.platformCommissionPercent = clamp(safe.platformCommissionPercent, 0, 50, 15);
+    }
+    if (safe.cancellationWindowHours !== undefined) {
+      safe.cancellationWindowHours = clamp(safe.cancellationWindowHours, 0, 72, 4);
+    }
+    if (safe.minFeeLimit !== undefined) {
+      safe.minFeeLimit = Math.max(0, safe.minFeeLimit);
+    }
+    if (safe.maxFeeLimit !== undefined) {
+      safe.maxFeeLimit = Math.max(0, safe.maxFeeLimit);
+    }
+    if (safe.minFeeLimit !== undefined && safe.maxFeeLimit !== undefined && safe.minFeeLimit > safe.maxFeeLimit) {
+      throw new Error('Minimum fee cannot exceed maximum fee.');
+    }
+    setPlatformConfig((prev) => ({ ...prev, ...safe }));
+    addAuditLog('PLATFORM_CONFIG_UPDATED', 'Global Configuration', JSON.stringify(safe));
   };
 
   const resetToDefaults = () => {
@@ -1221,8 +1436,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setVitals(INITIAL_VITALS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
     setPlatformConfig(INITIAL_CONFIG);
+    setAuthDoctor(null);
+    setAuthAdmin(null);
+    setProviderPasswords({});
     localStorage.clear();
-    addAuditLog('SYSTEM_RESET', 'All Data', 'Platform restored to initial demonstration state.');
+    addAuditLog('SYSTEM_RESET', 'All Data', 'Platform data cleared to empty state.');
   };
 
   return (
@@ -1278,6 +1496,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closeAuthModal,
         doctorLogin,
         adminLogin,
+        patientLogin,
+        updateAdminProfile,
         doctorRegister,
         adminRegister,
         patientRegister,

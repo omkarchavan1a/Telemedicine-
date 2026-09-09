@@ -19,12 +19,11 @@ export const DoctorAnalytics: React.FC = () => {
     doctors.find(
       (d) =>
         d.id === currentUser.id ||
-        d.email.toLowerCase() === currentUser.email.toLowerCase() ||
-        d.name.toLowerCase().includes(currentUser.name.toLowerCase().split(',')[0])
-    ) ||
-    doctors[0];
+        (currentUser.email && d.email.toLowerCase() === currentUser.email.toLowerCase())
+    );
 
   const docAppointments = useMemo(() => {
+    if (!doc) return [];
     return appointments.filter(
       (a) =>
         a.doctorId === doc.id ||
@@ -42,6 +41,7 @@ export const DoctorAnalytics: React.FC = () => {
 
   // Calculate real utilization based on doctor's schedule
   const utilizationRate = useMemo(() => {
+    if (!doc) return 0;
     const [startH, startM] = (doc.availableHours?.start || '09:00').split(':').map(Number);
     const [endH, endM] = (doc.availableHours?.end || '17:00').split(':').map(Number);
     const duration = doc.slotDurationMinutes || 30;
@@ -87,6 +87,17 @@ export const DoctorAnalytics: React.FC = () => {
 
   // Unique patients seen
   const uniquePatients = new Set(docAppointments.map((a) => a.patientId)).size;
+
+  if (!doc) {
+    return (
+      <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200 p-8 shadow-xs text-center space-y-2">
+        <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Analytics unavailable</h1>
+        <p className="text-xs sm:text-sm text-slate-500">
+          No linked doctor profile was found for this session. Please sign in again.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -144,7 +155,8 @@ export const DoctorAnalytics: React.FC = () => {
           </span>
         </div>
 
-        <div className="grid grid-cols-6 gap-3 pt-4 items-end h-52 border-b border-slate-100 pb-4">
+        <div className="overflow-x-auto no-scrollbar -mx-1 px-1">
+          <div className="grid grid-cols-6 gap-3 pt-4 items-end h-52 border-b border-slate-100 pb-4 min-w-[480px]">
           {monthlyData.map((d) => {
             const heightPercent = d.consultations > 0 ? Math.max(12, (d.consultations / maxVal) * 100) : 4;
             return (
@@ -169,6 +181,7 @@ export const DoctorAnalytics: React.FC = () => {
               </div>
             );
           })}
+          </div>
         </div>
       </div>
     </div>

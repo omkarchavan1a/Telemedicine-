@@ -81,12 +81,18 @@ export const MedicalProfileView: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="relative group">
-              <img
-                src={patientProfile.avatar}
-                alt={patientProfile.name}
-                className="w-16 h-16 rounded-2xl object-cover ring-2 ring-emerald-200 shadow-xs"
-                referrerPolicy="no-referrer"
-              />
+              {patientProfile.avatar ? (
+                <img
+                  src={patientProfile.avatar}
+                  alt={patientProfile.name || 'Patient'}
+                  className="w-16 h-16 rounded-2xl object-cover ring-2 ring-emerald-200 shadow-xs"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-extrabold text-2xl ring-2 ring-emerald-200 shadow-xs">
+                  {(patientProfile.name || 'P').charAt(0).toUpperCase()}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setShowAvatarEdit(!showAvatarEdit)}
@@ -160,7 +166,7 @@ export const MedicalProfileView: React.FC = () => {
             </div>
             <JpgAvatarUploader
               currentAvatar={patientProfile.avatar}
-              userName={patientProfile.name}
+              fallbackName={patientProfile.name || 'Patient'}
               onAvatarChange={(newAvatar) => {
                 updatePatientProfile({ avatar: newAvatar });
                 setSavedSuccess(true);
@@ -506,7 +512,7 @@ export const MedicalProfileView: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
               <span className="block text-[11px] font-semibold text-slate-500">Registered Account Gmail/Email</span>
-              <span className="font-bold text-slate-800 text-sm">{patientProfile.email || 'oomkarchavan@gmail.com'}</span>
+              <span className="font-bold text-slate-800 text-sm">{patientProfile.email || 'Not provided'}</span>
             </div>
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
               <div>

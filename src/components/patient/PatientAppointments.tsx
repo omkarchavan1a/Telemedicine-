@@ -65,7 +65,12 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
       setCancelError('Please specify a brief reason for the cancellation.');
       return;
     }
-    cancelAppointment(cancelModalApt.id, cancelReason.trim(), 'patient');
+    try {
+      cancelAppointment(cancelModalApt.id, cancelReason.trim(), 'patient');
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Cancellation failed. Please try again.');
+      return;
+    }
     setCancelModalApt(null);
     setCancelReason('');
     setCancelError('');

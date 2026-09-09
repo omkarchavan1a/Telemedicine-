@@ -37,6 +37,8 @@ export const AdminDashboard: React.FC = () => {
     currentTab,
     setCurrentTab,
     setCurrentRole,
+    authAdmin,
+    updateAdminProfile,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<
@@ -112,14 +114,26 @@ export const AdminDashboard: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  const [configError, setConfigError] = useState('');
+  const [showAdminProfileEdit, setShowAdminProfileEdit] = useState(false);
+  const [adminName, setAdminName] = useState('');
+  const [adminPhone, setAdminPhone] = useState('');
+  const [adminProfileSaved, setAdminProfileSaved] = useState(false);
+
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
-    updatePlatformConfig({
-      cancellationWindowHours: Number(cancellationHours),
-      platformCommissionPercent: Number(commissionPercent),
-      minFeeLimit: Number(minFee),
-      maxFeeLimit: Number(maxFee),
-    });
+    setConfigError('');
+    try {
+      updatePlatformConfig({
+        cancellationWindowHours: Number(cancellationHours),
+        platformCommissionPercent: Number(commissionPercent),
+        minFeeLimit: Number(minFee),
+        maxFeeLimit: Number(maxFee),
+      });
+    } catch (err) {
+      setConfigError(err instanceof Error ? err.message : 'Configuration save failed.');
+      return;
+    }
     setConfigSaved(true);
     setTimeout(() => setConfigSaved(false), 3000);
   };
@@ -195,6 +209,80 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Administrator Profile Card */}
+      {authAdmin && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-extrabold text-lg shrink-0">
+                {(authAdmin.name || 'A').charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-purple-600 uppercase tracking-wider">
+                  Signed-in Administrator
+                </div>
+                <h2 className="text-base font-extrabold text-slate-900 truncate">{authAdmin.name}</h2>
+                <p className="text-xs text-slate-500 truncate">{authAdmin.email} · {authAdmin.phone || 'No phone on file'}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAdminName(authAdmin.name);
+                setAdminPhone(authAdmin.phone);
+                setShowAdminProfileEdit(!showAdminProfileEdit);
+              }}
+              className="px-4 py-2 border border-slate-200 hover:border-purple-400 rounded-xl text-xs font-bold text-slate-700 hover:text-purple-700 bg-slate-50 hover:bg-purple-50/50 transition-colors shrink-0"
+            >
+              {showAdminProfileEdit ? 'Hide Profile Editor' : 'Edit My Profile'}
+            </button>
+          </div>
+
+          {showAdminProfileEdit && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateAdminProfile({ name: adminName, phone: adminPhone });
+                setAdminProfileSaved(true);
+                setTimeout(() => {
+                  setAdminProfileSaved(false);
+                  setShowAdminProfileEdit(false);
+                }, 1500);
+              }}
+              className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs"
+            >
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={adminName}
+                  onChange={(e) => setAdminName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Contact Phone</label>
+                <input
+                  type="tel"
+                  value={adminPhone}
+                  onChange={(e) => setAdminPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition-colors"
+                >
+                  {adminProfileSaved ? 'Profile Saved!' : 'Save Profile'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
       {/* Main Admin Tab Navigation */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-semibold overflow-x-auto no-scrollbar">
@@ -1064,7 +1152,11 @@ export const AdminDashboard: React.FC = () => {
                       onClick={() => {
                         const reason = prompt('Enter admin dispute override cancellation reason:');
                         if (reason) {
-                          cancelAppointment(apt.id, reason, 'admin');
+                          try {
+                            cancelAppointment(apt.id, reason, 'admin');
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : 'Cancellation failed.');
+                          }
                         }
                       }}
                       className="px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-xl font-bold text-xs"
@@ -1100,6 +1192,11 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <form onSubmit={handleSaveConfig} className="space-y-4 text-xs">
+            {configError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-semibold">
+                {configError}
+              </div>
+            )}
             <div>
               <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Refund Cancellation Window (Hours Prior)

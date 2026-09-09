@@ -29,11 +29,14 @@ const CATEGORIES: HealthRecordCategory[] = [
 export const HealthRecordsVault: React.FC = () => {
   const {
     currentUser,
+    currentRole,
     healthRecords,
     uploadHealthRecord,
     deleteHealthRecord,
     vitals,
     addVitalMeasurement,
+    appointments,
+    authDoctor,
   } = useApp();
 
   const [viewingRecord, setViewingRecord] = useState<HealthRecord | null>(null);
@@ -64,18 +67,48 @@ export const HealthRecordsVault: React.FC = () => {
   const [newWeight, setNewWeight] = useState(61.5);
   const [vitalDate, setVitalDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Filter records
-  const patientRecords = healthRecords.filter(
-    (r) => r.patientId === currentUser.id || currentUser.role !== 'patient'
-  );
+  // Filter records: patients see their own; doctors see only their own patients'
+  // records (via appointments); admins see all for oversight.
+  const myPatientIds = React.useMemo(() => {
+    if (currentRole !== 'doctor') return new Set<string>();
+    const confid = authDoctor;
+    return new Set(
+      appointments
+        .filter((a) => (confid ? a.doctorId === confid.id : true))
+        .map((a) => a.patientId)
+    );
+  }, [appointments, authDoctor, currentRole]);
+
+  const patientRecords = healthRecords.filter((r) => {
+    if (currentRole === 'patient') return r.patientId === currentUser.id;
+    if (currentRole === 'doctor') return myPatientIds.has(r.patientId);
+    return true;
+  });
 
   const filteredRecords = patientRecords.filter((r) => {
     if (selectedCategory !== 'All' && r.category !== selectedCategory) return false;
     return true;
   });
 
+  const ALLOWED_UPLOAD_EXT = ['pdf', 'jpg', 'jpeg', 'png'];
+  const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB (localStorage-backed vault)
+
   const processSelectedFile = (file: File) => {
     setUploadError('');
+    const lowerName = file.name.toLowerCase();
+    const ext = lowerName.split('.').pop() || '';
+    const mimeOk =
+      file.type === 'application/pdf' ||
+      file.type === 'image/jpeg' ||
+      file.type === 'image/png';
+    if (!ALLOWED_UPLOAD_EXT.includes(ext) || !mimeOk) {
+      setUploadError('Only PDF, JPG, or PNG medical documents can be uploaded.');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadError('File exceeds the 10 MB vault limit. Please upload a smaller file.');
+      return;
+    }
     setUploadedFile(file);
     setSelectedFileName(file.name);
 
@@ -86,16 +119,10 @@ export const HealthRecordsVault: React.FC = () => {
         : `${Math.round(file.size / 1024)} KB`;
     setSelectedFileSize(sizeStr);
 
-    // Determine type
-    const lowerName = file.name.toLowerCase();
-    if (file.type.includes('png') || lowerName.endsWith('.png')) {
+    // Determine type (extension already validated above)
+    if (lowerName.endsWith('.png')) {
       setSelectedFileType('png');
-    } else if (
-      file.type.includes('jpeg') ||
-      file.type.includes('jpg') ||
-      lowerName.endsWith('.jpg') ||
-      lowerName.endsWith('.jpeg')
-    ) {
+    } else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
       setSelectedFileType('jpg');
     } else {
       setSelectedFileType('pdf');

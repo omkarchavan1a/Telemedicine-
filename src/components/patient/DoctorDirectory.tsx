@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DoctorProfile } from '../../types';
 import { PatientIntakeAndDoctorMatcher } from './PatientIntakeAndDoctorMatcher';
+import { getIntakeProgress, isIntakeComplete } from '../../lib/patientIntake';
 import {
   Search,
   Star,
@@ -19,6 +20,8 @@ import {
   Sparkles,
   ListFilter,
   HeartPulse,
+  ClipboardList,
+  ArrowRight,
 } from 'lucide-react';
 
 const SPECIALIZATIONS = [
@@ -45,7 +48,7 @@ export const DoctorDirectory: React.FC<DoctorDirectoryProps> = ({
   onSelectDoctor,
   onBookDoctor,
 }) => {
-  const { doctors, openAuthModal } = useApp();
+  const { doctors, openAuthModal, patientProfile, setCurrentTab } = useApp();
 
   const handleBook = onBookDoctor || onSelectDoctorToBook || (() => {});
   const handleView = onSelectDoctor || onViewDoctorProfile || (() => {});
@@ -86,6 +89,35 @@ export const DoctorDirectory: React.FC<DoctorDirectoryProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Step-1 reminder: patient information & medical intake come before consultations */}
+      {!isIntakeComplete(patientProfile) && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50/70 to-amber-50 border-2 border-amber-300/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center shrink-0">
+              <ClipboardList className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-amber-950">
+                Step 1 pending: complete your medical intake ({getIntakeProgress(patientProfile).done}/
+                {getIntakeProgress(patientProfile).total})
+              </div>
+              <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                Doctors consult best with your information first — personal details, emergency contact,
+                allergies and history. You can browse below, but finish intake before booking.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCurrentTab('profile')}
+            className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-colors shrink-0 flex items-center justify-center gap-1.5"
+          >
+            <span>Complete Intake</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Clinical Pathway Selector: Guided Matcher vs Full Directory */}
       <div className="liquid-glass rounded-2xl p-2.5 border border-white/90 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 px-2">

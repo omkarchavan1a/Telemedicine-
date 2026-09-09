@@ -1,21 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
+import { isNavActive } from '../../lib/navigation';
 import {
   Activity,
   UserCheck,
   Stethoscope,
   ShieldCheck,
   Video,
-  RotateCcw,
   AlertTriangle,
   ChevronDown,
   Calendar,
   FileText,
   Clock,
-  Lock,
   LogOut,
-  UserPlus,
   KeyRound,
 } from 'lucide-react';
 
@@ -32,7 +30,6 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
     appointments,
     doctors,
     setActiveVideoAppointment,
-    resetToDefaults,
     currentTab: ctxCurrentTab,
     setCurrentTab: ctxSetCurrentTab,
     authDoctor,
@@ -45,7 +42,27 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
   const setCurrentTab = props.setCurrentTab ?? ctxSetCurrentTab;
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const roleMenuRef = useRef<HTMLDivElement>(null);
   const pendingDoctorsCount = doctors.filter((d) => d.status === 'pending').length;
+
+  // Close role menu on Escape / outside click (a11y)
+  useEffect(() => {
+    if (!showRoleMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowRoleMenu(false);
+    };
+    const onPointer = (e: MouseEvent) => {
+      if (roleMenuRef.current && !roleMenuRef.current.contains(e.target as Node)) {
+        setShowRoleMenu(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onPointer);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onPointer);
+    };
+  }, [showRoleMenu]);
 
   // Check if there is any active or waiting room appointment
   const waitingOrActiveApt = appointments.find(
@@ -94,23 +111,25 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
         <div className="flex items-center justify-between h-16 gap-4">
           {/* Logo & Brand */}
           <div className="flex items-center gap-3">
-            <div
+            <button
               id="brand-logo"
+              type="button"
               onClick={() => setCurrentTab('home')}
-              className="flex items-center gap-2.5 cursor-pointer group"
+              aria-label="TeleDoc home"
+              className="flex items-center gap-3 cursor-pointer group rounded-xl px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             >
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-xs group-hover:shadow-md group-hover:scale-105 transition-all">
+              <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-xs group-hover:shadow-md group-hover:scale-105 transition-all">
                 <Activity className="w-5 h-5" />
               </div>
-              <div>
-                <span className="text-xl font-extrabold tracking-tight text-slate-900 font-display">
+              <div className="flex items-center gap-2 leading-none">
+                <span className="text-xl font-extrabold tracking-tight text-slate-900 font-display whitespace-nowrap">
                   Tele<span className="text-blue-600">Doc</span>
                 </span>
-                <span className="hidden sm:inline-block ml-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100/80 px-1.5 py-0.5 rounded-md border border-slate-200/60">
+                <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100/80 px-1.5 py-0.5 rounded-md border border-slate-200/60 whitespace-nowrap">
                   Virtual Care
                 </span>
               </div>
-            </div>
+            </button>
 
             {/* Live Consultation Notification Pill if any */}
             {waitingOrActiveApt && (
@@ -131,10 +150,21 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
             {currentRole === 'patient' && (
               <>
                 <button
+                  id="nav-patient-home"
+                  onClick={() => setCurrentTab('home')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    isNavActive(currentTab, 'home')
+                      ? 'bg-white text-blue-700 shadow-xs border border-white/90'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
+                  }`}
+                >
+                  Home
+                </button>
+                <button
                   id="nav-patient-doctors"
                   onClick={() => setCurrentTab('doctors')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    currentTab === 'doctors'
+                    isNavActive(currentTab, 'doctors')
                       ? 'bg-white text-blue-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -145,7 +175,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-patient-appointments"
                   onClick={() => setCurrentTab('appointments')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    currentTab === 'appointments'
+                    isNavActive(currentTab, 'appointments')
                       ? 'bg-white text-blue-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -157,7 +187,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-patient-records"
                   onClick={() => setCurrentTab('records')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    currentTab === 'records'
+                    isNavActive(currentTab, 'records')
                       ? 'bg-white text-blue-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -169,7 +199,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-patient-profile"
                   onClick={() => setCurrentTab('profile')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    currentTab === 'profile'
+                    isNavActive(currentTab, 'profile')
                       ? 'bg-white text-blue-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -185,7 +215,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-doctor-dashboard"
                   onClick={() => setCurrentTab('doctor-queue')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    currentTab === 'doctor-queue'
+                    isNavActive(currentTab, 'doctor-queue')
                       ? 'bg-white text-blue-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -197,7 +227,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-doctor-availability"
                   onClick={() => setCurrentTab('doctor-availability')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    currentTab === 'doctor-availability'
+                    isNavActive(currentTab, 'doctor-availability')
                       ? 'bg-white text-blue-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -209,7 +239,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-doctor-analytics"
                   onClick={() => setCurrentTab('doctor-analytics')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    currentTab === 'doctor-analytics'
+                    isNavActive(currentTab, 'doctor-analytics')
                       ? 'bg-white text-blue-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -225,7 +255,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-admin-dashboard"
                   onClick={() => setCurrentTab('admin-analytics')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    currentTab === 'admin-analytics'
+                    isNavActive(currentTab, 'admin-analytics')
                       ? 'bg-white text-purple-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -236,7 +266,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-admin-doctors"
                   onClick={() => setCurrentTab('admin-doctors')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    currentTab === 'admin-doctors'
+                    isNavActive(currentTab, 'admin-doctors')
                       ? 'bg-white text-purple-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -252,7 +282,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-admin-appointments"
                   onClick={() => setCurrentTab('admin-appointments')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    currentTab === 'admin-appointments'
+                    isNavActive(currentTab, 'admin-appointments')
                       ? 'bg-white text-purple-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -263,7 +293,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-admin-config"
                   onClick={() => setCurrentTab('admin-config')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    currentTab === 'admin-config'
+                    isNavActive(currentTab, 'admin-config')
                       ? 'bg-white text-purple-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -274,7 +304,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                   id="nav-admin-audit"
                   onClick={() => setCurrentTab('admin-audit')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    currentTab === 'admin-audit'
+                    isNavActive(currentTab, 'admin-audit')
                       ? 'bg-white text-purple-700 shadow-xs border border-white/90'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
                   }`}
@@ -312,10 +342,14 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
             )}
 
             {/* Quick Role Switcher Button */}
-            <div className="relative">
+            <div className="relative" ref={roleMenuRef}>
               <button
                 id="role-switcher-btn"
+                type="button"
                 onClick={() => setShowRoleMenu(!showRoleMenu)}
+                aria-expanded={showRoleMenu}
+                aria-haspopup="menu"
+                aria-controls="role-menu-dropdown"
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-2xs backdrop-blur-md ${currentBadge.color}`}
               >
                 <CurrentBadgeIcon className="w-3.5 h-3.5" />
@@ -326,6 +360,8 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               {showRoleMenu && (
                 <div
                   id="role-menu-dropdown"
+                  role="menu"
+                  aria-label="Select portal"
                   className="absolute right-0 mt-2 w-80 liquid-glass rounded-2xl shadow-2xl border border-white/90 py-2 z-50 text-slate-800 backdrop-blur-2xl"
                 >
                   <div className="px-4 py-2 border-b border-slate-100/80">
@@ -343,7 +379,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                       id="switch-to-patient"
                       onClick={() => {
                         setCurrentRole('patient');
-                        setCurrentTab('doctors');
+                        setCurrentTab('home');
                         setShowRoleMenu(false);
                       }}
                       className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-colors ${
@@ -505,33 +541,28 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
 
             {/* User Profile Avatar */}
             <div className="flex items-center gap-2 pl-2 border-l border-slate-200/80">
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
-                className="w-8 h-8 rounded-full object-cover ring-2 ring-white shadow-2xs"
-                referrerPolicy="no-referrer"
-              />
+              {currentUser.avatar ? (
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.name || 'User'}
+                  className="w-8 h-8 rounded-full object-cover ring-2 ring-white shadow-2xs"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div
+                  aria-label={currentUser.name || 'User'}
+                  className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold ring-2 ring-white shadow-2xs"
+                >
+                  {(currentUser.name || 'G').charAt(0).toUpperCase()}
+                </div>
+              )}
               <div className="hidden sm:block text-left">
                 <div className="text-xs font-semibold text-slate-800 leading-tight">
-                  {currentUser.name}
+                  {currentUser.name || 'Guest'}
                 </div>
                 <div className="text-[10px] text-slate-500 capitalize">{currentUser.role}</div>
               </div>
             </div>
-
-            {/* Reset Demo Data Pill */}
-            <button
-              id="reset-demo-btn"
-              onClick={() => {
-                if (window.confirm('Reset all demo appointments, records, and mock data to initial defaults?')) {
-                  resetToDefaults();
-                }
-              }}
-              title="Reset application to clean initial seed data"
-              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white/60 rounded-xl transition-all"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -540,9 +571,17 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
           {currentRole === 'patient' && (
             <>
               <button
+                onClick={() => setCurrentTab('home')}
+                className={`px-3 py-1 rounded-lg shrink-0 ${
+                  isNavActive(currentTab, 'home') ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                Home
+              </button>
+              <button
                 onClick={() => setCurrentTab('doctors')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'doctors' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'doctors') ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Find Doctors
@@ -550,7 +589,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('appointments')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'appointments' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'appointments') ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 My Consultations
@@ -558,7 +597,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('records')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'records' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'records') ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Health Records
@@ -566,7 +605,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('profile')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'profile' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'profile') ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Medical Profile
@@ -579,7 +618,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('doctor-queue')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'doctor-queue' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'doctor-queue') ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Queue
@@ -587,7 +626,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('doctor-availability')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'doctor-availability' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'doctor-availability') ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Schedule & Slots
@@ -595,7 +634,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('doctor-analytics')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'doctor-analytics' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'doctor-analytics') ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Earnings
@@ -608,7 +647,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('admin-analytics')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'admin-analytics' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'admin-analytics') ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Reports
@@ -616,7 +655,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('admin-doctors')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'admin-doctors' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'admin-doctors') ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Approvals
@@ -624,7 +663,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('admin-appointments')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'admin-appointments' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'admin-appointments') ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Disputes
@@ -632,7 +671,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('admin-config')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'admin-config' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'admin-config') ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Config
@@ -640,7 +679,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               <button
                 onClick={() => setCurrentTab('admin-audit')}
                 className={`px-3 py-1 rounded-lg shrink-0 ${
-                  currentTab === 'admin-audit' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
+                  isNavActive(currentTab, 'admin-audit') ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 Audit

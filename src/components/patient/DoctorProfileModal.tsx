@@ -70,23 +70,23 @@ export const DoctorProfileModal: React.FC<DoctorProfileModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-6 modal-scroll">
           {/* Key Quick Stats */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-slate-50 p-3.5 rounded-2xl text-center border border-slate-100">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="bg-slate-50 p-2.5 sm:p-3.5 rounded-2xl text-center border border-slate-100">
               <Award className="w-5 h-5 text-blue-600 mx-auto mb-1" />
-              <div className="text-xs text-slate-500 font-medium">Experience</div>
-              <div className="text-base font-extrabold text-slate-900">{doctor.experienceYears} Years</div>
+              <div className="text-[11px] sm:text-xs text-slate-500 font-medium">Experience</div>
+              <div className="text-sm sm:text-base font-extrabold text-slate-900">{doctor.experienceYears} Years</div>
             </div>
-            <div className="bg-slate-50 p-3.5 rounded-2xl text-center border border-slate-100">
+            <div className="bg-slate-50 p-2.5 sm:p-3.5 rounded-2xl text-center border border-slate-100">
               <Clock className="w-5 h-5 text-indigo-600 mx-auto mb-1" />
-              <div className="text-xs text-slate-500 font-medium">Slot Length</div>
-              <div className="text-base font-extrabold text-slate-900">{doctor.slotDurationMinutes} Mins</div>
+              <div className="text-[11px] sm:text-xs text-slate-500 font-medium">Slot Length</div>
+              <div className="text-sm sm:text-base font-extrabold text-slate-900">{doctor.slotDurationMinutes} Mins</div>
             </div>
-            <div className="bg-slate-50 p-3.5 rounded-2xl text-center border border-slate-100">
+            <div className="bg-slate-50 p-2.5 sm:p-3.5 rounded-2xl text-center border border-slate-100">
               <ShieldCheck className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
-              <div className="text-xs text-slate-500 font-medium">Standard Fee</div>
-              <div className="text-base font-extrabold text-slate-900">${doctor.consultationFee}</div>
+              <div className="text-[11px] sm:text-xs text-slate-500 font-medium">Standard Fee</div>
+              <div className="text-sm sm:text-base font-extrabold text-slate-900">${doctor.consultationFee}</div>
             </div>
           </div>
 

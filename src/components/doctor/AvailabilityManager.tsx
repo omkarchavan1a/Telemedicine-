@@ -23,17 +23,17 @@ const DAYS = [
 ];
 
 export const AvailabilityManager: React.FC = () => {
-  const { doctors, updateDoctorAvailability } = useApp();
+  const { doctors, authDoctor, updateDoctorAvailability } = useApp();
 
-  // Active doctor (Dr. Rajiv Mehta)
-  const currentDoctor = doctors.find((d) => d.id === 'doc-mehta') || doctors[0];
+  // Signed-in doctor's schedule (no demo fallback)
+  const currentDoctor = authDoctor ?? doctors[0];
 
-  const [availableDays, setAvailableDays] = useState<number[]>(currentDoctor.availableDays);
-  const [startTime, setStartTime] = useState(currentDoctor.availableHours.start);
-  const [endTime, setEndTime] = useState(currentDoctor.availableHours.end);
-  const [slotDuration, setSlotDuration] = useState(currentDoctor.slotDurationMinutes);
-  const [consultationFee, setConsultationFee] = useState(currentDoctor.consultationFee);
-  const [blockedDates, setBlockedDates] = useState<string[]>(currentDoctor.blockedDates);
+  const [availableDays, setAvailableDays] = useState<number[]>(currentDoctor?.availableDays ?? [1, 2, 3, 4, 5]);
+  const [startTime, setStartTime] = useState(currentDoctor?.availableHours.start ?? '09:00');
+  const [endTime, setEndTime] = useState(currentDoctor?.availableHours.end ?? '17:00');
+  const [slotDuration, setSlotDuration] = useState(currentDoctor?.slotDurationMinutes ?? 30);
+  const [consultationFee, setConsultationFee] = useState(currentDoctor?.consultationFee ?? 50);
+  const [blockedDates, setBlockedDates] = useState<string[]>(currentDoctor?.blockedDates ?? []);
   const [newBlockDate, setNewBlockDate] = useState('');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -59,6 +59,7 @@ export const AvailabilityManager: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentDoctor) return;
     updateDoctorAvailability(currentDoctor.id, {
       availableDays,
       availableHours: { start: startTime, end: endTime },
@@ -119,7 +120,20 @@ export const AvailabilityManager: React.FC = () => {
           <div className="space-y-2">
             {DAYS.map((day) => {
               const isSelected = availableDays.includes(day.id);
-              return (
+  if (!currentDoctor) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-xs text-center">
+          <h1 className="text-xl font-extrabold tracking-tight text-slate-900">No doctor profile found</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-2">
+            Sign in or register as a doctor to configure your schedule and slots.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
                 <div
                   key={day.id}
                   onClick={() => toggleDay(day.id)}
@@ -179,7 +193,7 @@ export const AvailabilityManager: React.FC = () => {
               <label className="block font-semibold text-slate-700 mb-1">
                 Consultation Slot Duration
               </label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 min-[420px]:grid-cols-4 gap-2">
                 {[15, 20, 30, 45].map((mins) => (
                   <button
                     key={mins}

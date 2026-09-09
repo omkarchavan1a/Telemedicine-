@@ -25,44 +25,35 @@ export const PrescriptionPadModal: React.FC<PrescriptionPadModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { issuePrescription, patientProfile, currentUser, doctors } = useApp();
+  const { issuePrescription, patientProfile, currentUser, doctors, authDoctor } = useApp();
 
-  // Find issuing doctor
+  // Issuing doctor: signed-in doctor first, then appointment's doctor (strict, no cross-doctor fallback)
   const doc =
+    authDoctor ||
     doctors.find((d) => d.id === appointment?.doctorId) ||
-    doctors.find((d) => d.name.includes(currentUser.name.split(',')[0])) ||
-    doctors[0];
+    (currentUser.email
+      ? doctors.find((d) => d.email.toLowerCase() === currentUser.email.toLowerCase())
+      : undefined);
 
-  const [diagnosis, setDiagnosis] = useState(
-    'Stage 1 Essential Hypertension (Improving), Routine Cardiovascular Follow-Up'
-  );
-  const [bp, setBp] = useState('126/82 mmHg');
-  const [pulse, setPulse] = useState('72 bpm');
-  const [temp, setTemp] = useState('98.6 °F');
-  const [weight, setWeight] = useState('61.8 kg');
+  const [diagnosis, setDiagnosis] = useState('');
+  const [bp, setBp] = useState('');
+  const [pulse, setPulse] = useState('');
+  const [temp, setTemp] = useState('');
+  const [weight, setWeight] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
   const [medications, setMedications] = useState<PrescriptionMedication[]>([
     {
       id: 'm-1',
-      name: 'Telmisartan Tablets IP',
-      dosage: '20 mg',
-      frequency: '1 - 0 - 0 (Once daily morning after breakfast)',
-      duration: '30 Days',
-      instructions: 'Take regularly at the same time. Maintain low-sodium diet.',
-    },
-    {
-      id: 'm-2',
-      name: 'Cholecalciferol (Vitamin D3) Capsules',
-      dosage: '60,000 IU',
-      frequency: '0 - 0 - 1 (Once weekly at bedtime)',
-      duration: '4 Weeks',
-      instructions: 'Take with warm milk every Sunday evening.',
+      name: '',
+      dosage: '',
+      frequency: '',
+      duration: '',
+      instructions: '',
     },
   ]);
 
-  const [advice, setAdvice] = useState(
-    'Continue home BP self-monitoring twice weekly. Maintain regular aerobic exercise (brisk walking 30 mins). Avoid added salt in meals.'
-  );
+  const [advice, setAdvice] = useState('');
   const [followUpDate, setFollowUpDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
@@ -70,6 +61,19 @@ export const PrescriptionPadModal: React.FC<PrescriptionPadModalProps> = ({
   });
 
   if (!appointment) return null;
+  if (!doc) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
+        <div className="bg-white rounded-3xl p-8 max-w-md text-center space-y-2">
+          <h2 className="text-lg font-bold text-slate-900">Doctor profile not found</h2>
+          <p className="text-xs text-slate-500">Your session is not linked to a registered doctor profile.</p>
+          <button onClick={onClose} className="px-5 py-2.5 bg-slate-200 rounded-xl text-xs font-semibold">
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const addMedicationRow = () => {
     const newMed: PrescriptionMedication = {
@@ -91,7 +95,7 @@ export const PrescriptionPadModal: React.FC<PrescriptionPadModalProps> = ({
 
   const removeMedication = (id: string) => {
     if (medications.length <= 1) {
-      alert('Prescription must contain at least one medication.');
+      setSubmitError('Prescription must contain at least one medication.');
       return;
     }
     setMedications(medications.filter((m) => m.id !== id));
@@ -99,35 +103,50 @@ export const PrescriptionPadModal: React.FC<PrescriptionPadModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError('');
     if (!diagnosis.trim()) {
-      alert('Please enter a clinical diagnosis.');
+      setSubmitError('Please enter a clinical diagnosis.');
       return;
     }
 
     const hasEmptyName = medications.some((m) => !m.name.trim());
     if (hasEmptyName) {
-      alert('Please provide medication names for all prescribed drugs.');
+      setSubmitError('Please provide medication names for all prescribed drugs.');
       return;
     }
 
-    issuePrescription({
-      appointmentId: appointment.id,
-      patientId: appointment.patientId,
-      patientName: appointment.patientName,
-      patientAge: 34,
-      patientGender: patientProfile.gender || 'Female',
-      patientBloodGroup: patientProfile.bloodGroup || 'B+',
-      doctorId: doc.id,
-      doctorName: doc.name,
-      doctorSpecialization: doc.specialization,
-      doctorRegNo: doc.regNumber,
-      diagnosis,
-      vitals: { bp, pulse, temp, weight },
-      medications,
-      advice,
-      followUpDate,
-      doctorSignature: `${doc.name} (Digital Sign-off Verified · Reg #${doc.regNumber})`,
-    });
+    // Derive patient age from date of birth when available
+    let patientAge = 0;
+    if (patientProfile.dateOfBirth) {
+      const dob = new Date(patientProfile.dateOfBirth);
+      if (!Number.isNaN(dob.getTime())) {
+        patientAge = Math.max(0, new Date().getFullYear() - dob.getFullYear());
+      }
+    }
+
+    try {
+      issuePrescription({
+        appointmentId: appointment.id,
+        patientId: appointment.patientId,
+        patientName: appointment.patientName,
+        patientAge,
+        patientGender: patientProfile.gender || '',
+        patientBloodGroup: patientProfile.bloodGroup || '',
+        doctorId: doc.id,
+        doctorName: doc.name,
+        doctorSpecialization: doc.specialization,
+        doctorRegNo: doc.regNumber,
+        diagnosis: diagnosis.trim(),
+        vitals: { bp, pulse, temp, weight },
+        medications: medications.filter((m) => m.name.trim()),
+        advice,
+        followUpDate,
+        doctorSignature: `${doc.name} (Digital Sign-off Verified · Reg #${doc.regNumber})`,
+      });
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to issue prescription.');
+      return;
+    }
 
     onSuccess();
     onClose();
@@ -173,11 +192,11 @@ export const PrescriptionPadModal: React.FC<PrescriptionPadModalProps> = ({
             </div>
             <div>
               <span className="text-slate-500">Age/Gender:</span>{' '}
-              <strong className="text-white">34 / Female</strong>
+              <strong className="text-white">{patientProfile.gender || '—'}</strong>
             </div>
             <div>
               <span className="text-slate-500">Blood Group:</span>{' '}
-              <strong className="text-rose-400 font-bold">{patientProfile.bloodGroup || 'B+'}</strong>
+              <strong className="text-rose-400 font-bold">{patientProfile.bloodGroup || '—'}</strong>
             </div>
             <div>
               <span className="text-slate-500">Apt ID:</span>{' '}
@@ -188,6 +207,11 @@ export const PrescriptionPadModal: React.FC<PrescriptionPadModalProps> = ({
 
         {/* Prescription Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[75vh] overflow-y-auto text-xs">
+          {submitError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-semibold">
+              {submitError}
+            </div>
+          )}
           {/* Clinical Vitals Strip */}
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
             <label className="block font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">

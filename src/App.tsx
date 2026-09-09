@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { DoctorProfile } from './types';
 import { Navbar } from './components/layout/Navbar';
+import { PatientFrontPage } from './components/patient/PatientFrontPage';
 import { DoctorDirectory } from './components/patient/DoctorDirectory';
 import { DoctorProfileModal } from './components/patient/DoctorProfileModal';
 import { BookingModal } from './components/patient/BookingModal';
@@ -72,7 +73,9 @@ const MainContent: React.FC = () => {
         {/* Role-specific views */}
         {currentRole === 'patient' && (
           <>
-            {(currentTab === 'find-doctors' || currentTab === 'doctors' || currentTab === 'home') && (
+            {currentTab === 'home' && <PatientFrontPage />}
+
+            {(currentTab === 'find-doctors' || currentTab === 'doctors') && (
               <DoctorDirectory
                 onSelectDoctor={(doc) => setSelectedDoctor(doc)}
                 onBookDoctor={(doc) => setBookingDoctor(doc)}
@@ -128,7 +131,7 @@ const MainContent: React.FC = () => {
         />
       )}
 
-      {/* 2. Slot Selection & Mock Payment Booking Modal */}
+      {/* 2. Slot Selection & Payment Booking Modal */}
       {bookingDoctor && (
         <BookingModal
           doctor={bookingDoctor}

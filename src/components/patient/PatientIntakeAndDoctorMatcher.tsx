@@ -25,7 +25,6 @@ import {
   DollarSign,
   Languages,
   Check,
-  Zap,
 } from 'lucide-react';
 
 interface PatientIntakeAndDoctorMatcherProps {
@@ -45,17 +44,17 @@ export const PatientIntakeAndDoctorMatcher: React.FC<PatientIntakeAndDoctorMatch
   const [currentStep, setCurrentStep] = useState<'intake' | 'recommendations'>('intake');
 
   // Intake form state
-  const [patientName, setPatientName] = useState(patientProfile?.name || 'Anjali Sharma');
-  const [age, setAge] = useState<number>(29);
+  const [patientName, setPatientName] = useState(patientProfile?.name || '');
+  const [age, setAge] = useState<number>(0);
   const [gender, setGender] = useState<'Female' | 'Male' | 'Other'>('Female');
-  const [phone, setPhone] = useState(patientProfile?.phone || '+1 (555) 345-6789');
-  const [email, setEmail] = useState(patientProfile?.email || 'anjali.sharma@example.com');
+  const [phone, setPhone] = useState(patientProfile?.phone || '');
+  const [email, setEmail] = useState(patientProfile?.email || '');
 
-  const [primaryConcern, setPrimaryConcern] = useState('Severe Throbbing Migraine with Light Sensitivity');
+  const [primaryConcern, setPrimaryConcern] = useState('');
   const [symptomsDescription, setSymptomsDescription] = useState(
-    'Experiencing recurring headaches on the left temporal lobe, accompanied by nausea and sensitivity to sunlight for the past 4 days.'
+    ''
   );
-  const [selectedSymptomTags, setSelectedSymptomTags] = useState<string[]>(['migraine_headache']);
+  const [selectedSymptomTags, setSelectedSymptomTags] = useState<string[]>([]);
   const [duration, setDuration] = useState<'< 24 Hours' | '2 - 7 Days' | '1 - 4 Weeks' | 'Chronic (> 1 Month)'>('2 - 7 Days');
   const [severity, setSeverity] = useState<'Mild' | 'Moderate' | 'Acute / Severe'>('Moderate');
 
@@ -71,51 +70,6 @@ export const PatientIntakeAndDoctorMatcher: React.FC<PatientIntakeAndDoctorMatch
 
   // Filter within recommendations
   const [filterView, setFilterView] = useState<'all_matches' | 'top_matches'>('all_matches');
-
-  // Quick preset loader so users can easily test different clinical scenarios with 1 click
-  const loadPreset = (type: 'migraine' | 'pediatric' | 'cardiac' | 'dermatology') => {
-    if (type === 'migraine') {
-      setPatientName('Anjali Sharma');
-      setAge(29);
-      setGender('Female');
-      setPrimaryConcern('Severe Throbbing Migraine with Light Sensitivity');
-      setSymptomsDescription('Recurring unilateral headache with nausea and light sensitivity for 4 days.');
-      setSelectedSymptomTags(['migraine_headache', 'dizziness_numbness']);
-      setDuration('2 - 7 Days');
-      setSeverity('Moderate');
-      setPriorityPreference('best_clinical_match');
-    } else if (type === 'pediatric') {
-      setPatientName('Rohan Sharma (Child)');
-      setAge(7);
-      setGender('Male');
-      setPrimaryConcern('High Fever, Wheezing & Night Cough in Child');
-      setSymptomsDescription('Child running 102°F temperature with chest wheezing and difficulty sleeping through the night.');
-      setSelectedSymptomTags(['pediatric_fever', 'viral_flu_fever']);
-      setDuration('2 - 7 Days');
-      setSeverity('Moderate');
-      setPriorityPreference('best_clinical_match');
-    } else if (type === 'cardiac') {
-      setPatientName('Vikram Malhotra');
-      setAge(52);
-      setGender('Male');
-      setPrimaryConcern('Chest Pressure, Palpitations & Elevated Blood Pressure');
-      setSymptomsDescription('Exertional tightness across the chest accompanied by irregular heartbeat and fatigue.');
-      setSelectedSymptomTags(['chest_pain', 'high_bp']);
-      setDuration('< 24 Hours');
-      setSeverity('Acute / Severe');
-      setPriorityPreference('earliest_slot');
-    } else if (type === 'dermatology') {
-      setPatientName('Priya Nair');
-      setAge(26);
-      setGender('Female');
-      setPrimaryConcern('Spreading Itchy Red Skin Rash & Flare-up');
-      setSymptomsDescription('Red erythematous patches on forearms and neck with persistent itching after new skincare product.');
-      setSelectedSymptomTags(['skin_rash', 'acne_hairloss']);
-      setDuration('2 - 7 Days');
-      setSeverity('Mild');
-      setPriorityPreference('budget_friendly');
-    }
-  };
 
   const toggleSymptomTag = (tagId: string) => {
     setSelectedSymptomTags((prev) => {
@@ -225,44 +179,6 @@ export const PatientIntakeAndDoctorMatcher: React.FC<PatientIntakeAndDoctorMatch
               </p>
             </div>
 
-            {/* Quick Demo Case Presets */}
-            <div className="relative z-10 mt-6 pt-5 border-t border-white/15">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-blue-200 mb-2.5 flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-amber-300" />
-                <span>Quick Scenario Presets (1-Click Test):</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => loadPreset('migraine')}
-                  className="px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-semibold text-white border border-white/20 transition-all flex items-center gap-1.5"
-                >
-                  <span>🧠 Severe Migraine (Neurology)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => loadPreset('pediatric')}
-                  className="px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-semibold text-white border border-white/20 transition-all flex items-center gap-1.5"
-                >
-                  <span>👶 Child Fever 7 yrs (Pediatrics)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => loadPreset('cardiac')}
-                  className="px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-semibold text-white border border-white/20 transition-all flex items-center gap-1.5"
-                >
-                  <span>🫀 Chest Tightness (Cardiology)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => loadPreset('dermatology')}
-                  className="px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-semibold text-white border border-white/20 transition-all flex items-center gap-1.5"
-                >
-                  <span>🧴 Skin Rash & Flare (Dermatology)</span>
-                </button>
-              </div>
-            </div>
-
             {/* Background Sheen Blobs */}
             <div className="absolute -right-16 -top-16 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute right-1/4 -bottom-20 w-56 h-56 bg-cyan-400/20 rounded-full blur-2xl pointer-events-none" />
@@ -299,7 +215,7 @@ export const PatientIntakeAndDoctorMatcher: React.FC<PatientIntakeAndDoctorMatch
                       required
                       value={patientName}
                       onChange={(e) => setPatientName(e.target.value)}
-                      placeholder="e.g. Anjali Sharma"
+                      placeholder="e.g. Full name"
                       className="w-full px-3.5 py-2.5 bg-white/80 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner font-medium"
                     />
                   </div>

@@ -18,6 +18,8 @@ import {
   Camera,
   X,
   ShieldCheck,
+  Pencil,
+  Save,
 } from 'lucide-react';
 
 export const DoctorDashboard: React.FC = () => {
@@ -33,22 +35,72 @@ export const DoctorDashboard: React.FC = () => {
     prescriptions,
     setDoctorPrescriptionTargetApt,
     updateDoctorProfile,
+    platformConfig,
   } = useApp();
 
   const [queueFilter, setQueueFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [showDoctorDpEdit, setShowDoctorDpEdit] = useState(false);
   const [dpUpdatedMsg, setDpUpdatedMsg] = useState(false);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [profileSavedMsg, setProfileSavedMsg] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editHospital, setEditHospital] = useState('');
+  const [editFee, setEditFee] = useState(0);
+  const [editBio, setEditBio] = useState('');
+  const [editLanguages, setEditLanguages] = useState('');
 
-  // Identify active doctor dynamically
+  const openProfileEdit = (phone: string, hospital: string, fee: number, bio: string, languages: string[]) => {
+    setEditPhone(phone);
+    setEditHospital(hospital);
+    setEditFee(fee);
+    setEditBio(bio);
+    setEditLanguages(languages.join(', '));
+    setProfileError('');
+    setProfileSavedMsg(false);
+    setShowProfileEdit(true);
+  };
+
+  const saveProfileEdit = (doctorId: string) => {
+    setProfileError('');
+    const feeNum = Number(editFee);
+    if (!Number.isFinite(feeNum) || feeNum < platformConfig.minFeeLimit || feeNum > platformConfig.maxFeeLimit) {
+      setProfileError(`Consultation fee must be between $${platformConfig.minFeeLimit} and $${platformConfig.maxFeeLimit}.`);
+      return;
+    }
+    updateDoctorProfile(doctorId, {
+      phone: editPhone.trim(),
+      hospitalAffiliation: editHospital.trim() || 'General Medical Center',
+      consultationFee: Math.round(feeNum),
+      bio: editBio.trim(),
+      languages: editLanguages.split(',').map((l) => l.trim()).filter(Boolean),
+    });
+    setProfileSavedMsg(true);
+    setTimeout(() => {
+      setProfileSavedMsg(false);
+      setShowProfileEdit(false);
+    }, 1500);
+  };
+
+  // Identify active doctor dynamically (strict: never fall back to another doctor's profile)
   const activeDoctor =
     authDoctor ||
     doctors.find(
       (d) =>
         d.id === currentUser.id ||
-        d.email.toLowerCase() === currentUser.email.toLowerCase() ||
-        d.name.toLowerCase().includes(currentUser.name.toLowerCase().split(',')[0])
-    ) ||
-    doctors[0];
+        (currentUser.email && d.email.toLowerCase() === currentUser.email.toLowerCase())
+    );
+
+  if (!activeDoctor) {
+    return (
+      <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200 p-8 shadow-xs text-center space-y-2">
+        <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Doctor profile not found</h1>
+        <p className="text-xs sm:text-sm text-slate-500">
+          Your session is not linked to a registered doctor profile. Please sign in again or complete registration.
+        </p>
+      </div>
+    );
+  }
 
   // Filter appointments for active doctor
   const doctorAppointments = appointments.filter(
@@ -128,6 +180,24 @@ export const DoctorDashboard: React.FC = () => {
             >
               <Camera className="w-3.5 h-3.5 text-blue-600" />
               <span>{showDoctorDpEdit ? 'Hide DP Uploader' : 'Change DP (JPG)'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                showProfileEdit
+                  ? setShowProfileEdit(false)
+                  : openProfileEdit(
+                      activeDoctor.phone,
+                      activeDoctor.hospitalAffiliation,
+                      activeDoctor.consultationFee,
+                      activeDoctor.bio,
+                      activeDoctor.languages
+                    )
+              }
+              className="px-3 py-1.5 border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-700 bg-slate-50 hover:bg-indigo-50/50 flex items-center gap-1.5 transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5 text-indigo-600" />
+              <span>{showProfileEdit ? 'Hide Profile Editor' : 'Edit Profile'}</span>
             </button>
 
             {activeDoctor.status === 'pending' ? (
@@ -219,7 +289,7 @@ export const DoctorDashboard: React.FC = () => {
             </div>
             <JpgAvatarUploader
               currentAvatar={activeDoctor.avatar}
-              userName={activeDoctor.name}
+              fallbackName={activeDoctor.name}
               onAvatarChange={(newAvatarUrl) => {
                 updateDoctorProfile(activeDoctor.id, { avatar: newAvatarUrl });
                 setDpUpdatedMsg(true);
@@ -232,6 +302,91 @@ export const DoctorDashboard: React.FC = () => {
                 <CheckCircle2 className="w-3.5 h-3.5" /> Doctor display picture updated successfully!
               </p>
             )}
+          </div>
+        )}
+
+        {/* Expandable Doctor Profile Editor */}
+        {showProfileEdit && (
+          <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Pencil className="w-4 h-4 text-indigo-600" />
+                Edit Professional Profile
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowProfileEdit(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+                aria-label="Close profile editor"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {profileError && (
+              <p className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-2.5">
+                {profileError}
+              </p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Contact Phone</label>
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Consultation Fee ($ {platformConfig.minFeeLimit}–{platformConfig.maxFeeLimit})
+                </label>
+                <input
+                  type="number"
+                  min={platformConfig.minFeeLimit}
+                  max={platformConfig.maxFeeLimit}
+                  value={editFee}
+                  onChange={(e) => setEditFee(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1 text-xs">Hospital / Clinic Affiliation</label>
+              <input
+                type="text"
+                value={editHospital}
+                onChange={(e) => setEditHospital(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1 text-xs">Languages (comma separated)</label>
+              <input
+                type="text"
+                value={editLanguages}
+                onChange={(e) => setEditLanguages(e.target.value)}
+                placeholder="English, Hindi"
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1 text-xs">Professional Bio</label>
+              <textarea
+                rows={3}
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => saveProfileEdit(activeDoctor.id)}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-2"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>{profileSavedMsg ? 'Profile Saved!' : 'Save Profile'}</span>
+            </button>
           </div>
         )}
 
