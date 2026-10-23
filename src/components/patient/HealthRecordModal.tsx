@@ -1,5 +1,6 @@
 import React from 'react';
 import { HealthRecord } from '../../types';
+import { downloadHealthRecordPdf, canDownloadNow } from '../../utils/pdfReport';
 import { X, FileText, Calendar, Building, Download, ShieldCheck } from 'lucide-react';
 
 interface HealthRecordModalProps {
@@ -97,6 +98,7 @@ export const HealthRecordModal: React.FC<HealthRecordModalProps> = ({ record, on
             <button
               onClick={() => {
                 if (record.fileData) {
+                  if (!canDownloadNow()) return;
                   const link = document.createElement('a');
                   link.href = record.fileData;
                   link.download = record.fileName;
@@ -104,31 +106,7 @@ export const HealthRecordModal: React.FC<HealthRecordModalProps> = ({ record, on
                   link.click();
                   document.body.removeChild(link);
                 } else {
-                  const reportContent = `TELEDOC SECURE HEALTH RECORD
---------------------------------------------------
-Document Title: ${record.title}
-Category: ${record.category}
-Date of Record: ${record.recordDate}
-Diagnostic Center: ${record.labName || 'Clinical Diagnostic Lab'}
-Patient ID: ${record.patientId}
-Original File: ${record.fileName} (${record.fileSize})
-Status: Encrypted at rest · Patient Vault
-
-CLINICAL IMPRESSION & LAB FINDINGS:
-${record.notes || 'Normal study within expected reference ranges.'}
-
---------------------------------------------------
-CONFIDENTIAL MEDICAL DOCUMENT - PROTECTED UNDER TELEMEDICINE COMPLIANCE
-`;
-                  const blob = new Blob([reportContent], { type: 'text/plain;charset=utf-8' });
-                  const url = URL.createObjectURL(blob);
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = record.fileName.endsWith('.pdf') ? record.fileName.replace('.pdf', '_summary.txt') : `${record.fileName}.txt`;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  URL.revokeObjectURL(url);
+                  downloadHealthRecordPdf({ record });
                 }
               }}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"

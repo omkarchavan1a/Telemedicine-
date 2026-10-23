@@ -1,0 +1,802 @@
+import { jsPDF } from 'jspdf';
+import type { Appointment, Prescription, HealthRecord, VitalMeasurement, PatientProfile, DoctorProfile, PlatformConfig, AuditLog } from '../types';
+
+export function canDownloadNow(): boolean {
+  const now = Date.now();
+  if (now - lastDownloadAt < DOWNLOAD_THROTTLE_MS) return false;
+  lastDownloadAt = now;
+  return true;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Thin wrapper around jspdf with reusable layout helpers             */
+/* ------------------------------------------------------------------ */
+
+const FONT_SIZE_BODY = 10;
+const FONT_SIZE_SMALL = 8.5;
+const LINE_HEIGHT = 5.2;
+const MARGIN = 18;
+const CONTENT_WIDTH = 210 - MARGIN * 2; // A4 portrait
+
+function addHeader(doc: jsPDF, title: string, subtitle: string, roleLabel: string) {
+  // Top color band
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, 210, 30, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text(title, MARGIN, 14);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(subtitle, MARGIN, 22);
+  doc.text(roleLabel, 210 - MARGIN, 14, { align: 'right' });
+  doc.text('TeleDoc · Confidential Medical Document', 210 - MARGIN, 22, { align: 'right' });
+
+  doc.setTextColor(33, 37, 41);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(MARGIN, 32, 210 - MARGIN, 32);
+  doc.setFontSize(FONT_SIZE_SMALL);
+  doc.setTextColor(107, 114, 128);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`, MARGIN, 38);
+}
+
+function addSectionTitle(doc: jsPDF, text: string, y: number) {
+  doc.setFillColor(243, 244, 246);
+  doc.rect(MARGIN, y - 2, CONTENT_WIDTH, 8, 'F');
+  doc.setTextColor(30, 41, 59);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text(text, MARGIN + 3, y + 3);
+  return y + 10;
+}
+
+function addBody(doc: jsPDF, text: string, y: number, indent = 0) {
+  doc.setFontSize(FONT_SIZE_BODY);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(51, 65, 85);
+  const maxWidth = CONTENT_WIDTH - indent;
+  const lines = doc.splitTextToSize(text, maxWidth);
+  doc.text(lines, MARGIN + indent, y);
+  return y + lines.length * LINE_HEIGHT + 1.5;
+}
+
+function addKeyValue(doc: jsPDF, pairs: [string, string][], y: number) {
+  doc.setFontSize(FONT_SIZE_BODY);
+  doc.setFont('helvetica', 'normal');
+  let maxLabel = 0;
+  for (const [k] of pairs) maxLabel = Math.max(maxLabel, doc.getTextWidth(k) + 4);
+  for (const [key, value] of pairs) {
+    doc.setTextColor(107, 114, 128);
+    doc.setFont('helvetica', 'bold');
+    doc.text(key, MARGIN, y);
+    doc.setTextColor(33, 37, 41);
+    doc.setFont('helvetica', 'normal');
+    const valueLines = doc.splitTextToSize(value, CONTENT_WIDTH - maxLabel);
+    doc.text(valueLines, MARGIN + maxLabel, y);
+    y += Math.max(valueLines.length, 1) * LINE_HEIGHT + 1;
+  }
+  return y + 2;
+}
+
+function addTable(doc: jsPDF, headers: string[], rows: string[][], y: number, colWidths?: number[]) {
+  const widths = colWidths ?? (() => {
+    const total = CONTENT_WIDTH;
+    const each = total / headers.length;
+    return headers.map(() => Math.max(22, each));
+  })();
+
+  // Header row
+  doc.setFillColor(30, 41, 59);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(FONT_SIZE_SMALL);
+  doc.setFont('helvetica', 'bold');
+  let x = MARGIN;
+  headers.forEach((h, i) => {
+    doc.cell(x, y, widths[i], 6, h, 0, 'left');
+    x += widths[i];
+  });
+  y += 6.5;
+
+  // Data rows
+  doc.setDrawColor(226, 232, 240);
+  for (let r = 0; r < rows.length; r++) {
+    if (r % 2 === 0) doc.setFillColor(249, 250, 251);
+    else doc.setFillColor(255, 255, 255);
+    x = MARGIN;
+    const rowHeight = Math.max(5.5, doc.getTextWidth(rows[r][0] || '') > widths[0] ? 8 : 5.5);
+    doc.rect(MARGIN, y - 1, CONTENT_WIDTH, rowHeight, 'F');
+    doc.setTextColor(33, 37, 41);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONT_SIZE_SMALL);
+    rows[r].forEach((cell, i) => {
+      const cellLines = doc.splitTextToSize(String(cell), widths[i] - 2);
+      const h = cellLines.length * 4 + 1.5;
+      doc.text(cellLines, x + 1, y + 3.5);
+      x += widths[i];
+    });
+    doc.line(MARGIN, y + rowHeight, 210 - MARGIN, y + rowHeight);
+    y += rowHeight + 1;
+    if (y > 270) {
+      doc.addPage();
+      y = 20;
+    }
+  }
+  return y + 3;
+}
+
+function addFooter(doc: jsPDF) {
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(226, 232, 240);
+    doc.line(MARGIN, 287, 210 - MARGIN, 287);
+    doc.setFontSize(FONT_SIZE_SMALL);
+    doc.setTextColor(107, 114, 128);
+    doc.setFont('helvetica', 'normal');
+    doc.text('TeleDoc Secure Health Report · Confidential · Page ' + i + ' of ' + pageCount, 210 - MARGIN, 292, { align: 'right' });
+    doc.text('Generated by TeleDoc Telemedicine Platform', MARGIN, 292);
+  }
+}
+
+let lastDownloadAt = 0;
+const DOWNLOAD_THROTTLE_MS = 2000;
+
+function buildBlobAndDownload(doc: jsPDF, filename: string) {
+  const now = Date.now();
+  if (now - lastDownloadAt < DOWNLOAD_THROTTLE_MS) {
+    return;
+  }
+  lastDownloadAt = now;
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename.endsWith('.pdf') ? filename : filename + '.pdf';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Doctor report: patient visit summary (per appointment)            */
+/* ------------------------------------------------------------------ */
+
+export function downloadDoctorVisitSummaryPdf({
+  appointment,
+  prescription,
+  patientProfile,
+  doctor,
+  vitals,
+  healthRecords,
+  platformConfig,
+}: {
+  appointment: Appointment;
+  prescription: Prescription | undefined;
+  patientProfile: PatientProfile | null;
+  doctor: DoctorProfile;
+  vitals: VitalMeasurement[];
+  healthRecords: HealthRecord[];
+  platformConfig: PlatformConfig;
+}) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  let y = 44;
+
+  addHeader(doc, 'Patient Visit Summary', `Appointment ${appointment.id}`, 'Doctor Console');
+
+  y = addSectionTitle(doc, 'Appointment Details', y);
+  y = addKeyValue(doc, [
+    ['Patient', appointment.patientName],
+    ['Patient Email', appointment.patientEmail],
+    ['Date & Time', `${appointment.date} · ${appointment.timeSlot}`],
+    ['Visit Type', 'Telemedicine Video Consultation'],
+    ['Reason for Visit', appointment.reason || 'Not specified'],
+    ['Symptoms Reported', appointment.symptoms || 'Not documented'],
+    ['Duration', appointment.callDurationSeconds ? `${Math.floor(appointment.callDurationSeconds / 60)}m ${appointment.callDurationSeconds % 60}s` : 'Not recorded'],
+    ['Fee', `$${appointment.amount}.00 (${appointment.paymentStatus})`],
+    ['Status', appointment.status.replace(/_/g, ' ')],
+    ['Platform Commission', `${platformConfig.platformCommissionPercent}% ($${Math.round(appointment.amount * platformConfig.platformCommissionPercent / 100)})`],
+  ], y);
+
+  // Allergy & condition alert box if present
+  if (patientProfile && (patientProfile.allergies.length > 0 || patientProfile.chronicConditions.length > 0)) {
+    y += 2;
+    doc.setFillColor(254, 242, 242);
+    doc.setDrawColor(244, 63, 94);
+    doc.setLineWidth(0.4);
+    const alertBoxY = y;
+    doc.rect(MARGIN, y - 2, CONTENT_WIDTH, 0, 'F');
+    doc.setTextColor(169, 45, 60);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    let alertY = y;
+    if (patientProfile.allergies.length) {
+      doc.text(`⚠ ALLERGIES: ${patientProfile.allergies.join(', ')}`, MARGIN + 2, y);
+      alertY += 5.5;
+    }
+    if (patientProfile.chronicConditions.length) {
+      doc.text(`Chronic: ${patientProfile.chronicConditions.join(', ')}`, MARGIN + 2, alertY);
+      alertY += 5.5;
+    }
+    const boxHeight = Math.max(11, (alertY - y) + 2);
+    doc.rect(MARGIN, alertBoxY - 2, CONTENT_WIDTH, boxHeight, 'S');
+    doc.rect(MARGIN, alertBoxY - 2, CONTENT_WIDTH, boxHeight, 'F');
+    y = alertY + 4;
+  }
+
+  // Current medications
+  if (patientProfile && patientProfile.currentMedications.length) {
+    y = addSectionTitle(doc, 'Active Medications on File', y);
+    y = addKeyValue(doc, [['Current Medications', patientProfile.currentMedications.join(', ')]], y);
+  }
+
+  // Lab records on file
+  const patientHealthRecords = healthRecords.filter(r => r.patientId === appointment.patientId);
+  if (patientHealthRecords.length) {
+    y = addSectionTitle(doc, `Lab Reports on File (${patientHealthRecords.length})`, y);
+    const rows = patientHealthRecords.map(r => [
+      r.recordDate,
+      r.category,
+      r.title.length > 42 ? r.title.slice(0, 40) + '…' : r.title,
+      r.labName || '—',
+    ]);
+    y = addTable(doc, ['Date', 'Category', 'Title', 'Lab / Facility'], rows, y, [20, 32, 60, 48]);
+  }
+
+  // Vitals trend (last 6 measurements)
+  const patientVitals = vitals.filter(v => v.patientId === appointment.patientId).slice(-6);
+  if (patientVitals.length) {
+    y = addSectionTitle(doc, `Vitals Trend (${patientVitals.length} measurements)`, y);
+    const rows = patientVitals.map(v => [
+      v.date,
+      `${v.bpSystolic}/${v.bpDiastolic} mmHg`,
+      `${v.heartRate} bpm`,
+      `${v.bloodSugar} mg/dL`,
+      `${v.weight} kg`,
+    ]);
+    y = addTable(doc, ['Date', 'BP', 'Pulse', 'Sugar', 'Weight'], rows, y, [26, 30, 26, 30, 30]);
+  }
+
+  // Prescription
+  if (prescription) {
+    y = addSectionTitle(doc, 'Digital Prescription', y);
+    y = addKeyValue(doc, [
+      ['Prescription ID', prescription.id],
+      ['Issued At', new Date(prescription.issuedAt).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })],
+      ['Diagnosis', prescription.diagnosis],
+      ['Doctor', `${prescription.doctorName} (${prescription.doctorSpecialization}) · Reg #${prescription.doctorRegNo}`],
+      ['Doctor Signature', prescription.doctorSignature || 'Digitally signed'],
+    ], y);
+
+    if (prescription.medications.length) {
+      y = addSectionTitle(doc, 'Medications Prescribed', y);
+      const rows = prescription.medications.map(m => [
+        m.name,
+        m.dosage,
+        m.frequency,
+        m.duration,
+        m.instructions,
+      ]);
+      y = addTable(doc, ['Medication', 'Dosage', 'Frequency', 'Duration', 'Instructions'], rows, y, [34, 22, 34, 22, 48]);
+    }
+
+    if (prescription.advice) {
+      y = addSectionTitle(doc, 'Clinical Advice', y);
+      y = addBody(doc, prescription.advice, y);
+    }
+
+    if (prescription.followUpDate) {
+      y = addSectionTitle(doc, 'Follow-Up', y);
+      y = addKeyValue(doc, [['Follow-Up Date', prescription.followUpDate]], y);
+    }
+
+    if (prescription.vitals) {
+      y = addSectionTitle(doc, 'Vitals at Consultation', y);
+      const v = prescription.vitals;
+      y = addKeyValue(doc, [
+        ['Blood Pressure', v.bp || '—'],
+        ['Pulse', v.pulse || '—'],
+        ['Temperature', v.temp || '—'],
+        ['Weight', v.weight || '—'],
+      ], y);
+    }
+  }
+
+  addFooter(doc);
+  buildBlobAndDownload(doc, `visit_summary_${appointment.id}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Patient report: personal health summary                            */
+/* ------------------------------------------------------------------ */
+
+export function downloadPatientHealthSummaryPdf({
+  patient,
+  patientProfile,
+  appointments,
+  prescriptions,
+  healthRecords,
+  vitals,
+  doctors,
+}: {
+  patient: { name: string; email: string };
+  patientProfile: PatientProfile | null;
+  appointments: Appointment[];
+  prescriptions: Prescription[];
+  healthRecords: HealthRecord[];
+  vitals: VitalMeasurement[];
+  doctors: DoctorProfile[];
+}) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  let y = 44;
+
+  addHeader(doc, 'My Personal Health Summary', `Patient ${patient.email}`, 'Patient Portal');
+
+  // Profile card
+  y = addSectionTitle(doc, 'Patient Profile', y);
+  y = addKeyValue(doc, [
+    ['Name', patientProfile?.name || patient.name || '—'],
+    ['Email', patient.email],
+    ['Phone', patientProfile?.phone || 'Not on file'],
+    ['Date of Birth', patientProfile?.dateOfBirth || 'Not recorded'],
+    ['Blood Group', patientProfile?.bloodGroup || 'Not recorded'],
+    ['Gender', patientProfile?.gender || 'Not recorded'],
+  ], y);
+
+  // Allergies & conditions alert
+  if (patientProfile && (patientProfile.allergies.length > 0 || patientProfile.chronicConditions.length > 0)) {
+    y += 1;
+    doc.setFillColor(254, 242, 242);
+    doc.setDrawColor(244, 63, 94);
+    doc.setLineWidth(0.4);
+    const alertBoxY = y;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(169, 45, 60);
+    let alertY = y;
+    if (patientProfile.allergies.length) {
+      doc.text(`⚠ ALLERGIES: ${patientProfile.allergies.join(', ')}`, MARGIN + 2, y);
+      alertY += 5.5;
+    }
+    if (patientProfile.chronicConditions.length) {
+      doc.text(`Chronic Conditions: ${patientProfile.chronicConditions.join(', ')}`, MARGIN + 2, alertY);
+      alertY += 5.5;
+    }
+    if (patientProfile.currentMedications.length) {
+      doc.text(`Current Medications: ${patientProfile.currentMedications.join(', ')}`, MARGIN + 2, alertY);
+      alertY += 5.5;
+    }
+    const boxHeight = Math.max(11, (alertY - y) + 2);
+    doc.rect(MARGIN, alertBoxY - 2, CONTENT_WIDTH, boxHeight, 'S');
+    doc.rect(MARGIN, alertBoxY - 2, CONTENT_WIDTH, boxHeight, 'F');
+    y = alertY + 4;
+  }
+
+  // Appointment history
+  const patientAppts = appointments.filter(a => a.patientId === patient.email || a.patientId === patient.name);
+  if (patientAppts.length) {
+    y = addSectionTitle(doc, `Consultation History (${patientAppts.length} visits)`, y);
+    const rows = patientAppts.map(a => [
+      a.date,
+      a.timeSlot,
+      a.doctorName,
+      a.doctorSpecialization,
+      a.status.replace(/_/g, ' '),
+      a.callDurationSeconds ? `${Math.floor(a.callDurationSeconds / 60)}m` : '—',
+      a.ratingGiven ? `${a.ratingGiven}/5` : '—',
+    ]);
+    y = addTable(doc, ['Date', 'Slot', 'Doctor', 'Specialty', 'Status', 'Duration', 'Rating'], rows, y, [18, 16, 36, 30, 26, 18, 16]);
+  }
+
+  // Prescriptions
+  const patientRx = prescriptions.filter(rx => rx.patientId === (patientProfile?.userId || patient.name));
+  if (patientRx.length) {
+    y = addSectionTitle(doc, `Prescriptions Issued (${patientRx.length})`, y);
+    const rows = patientRx.map(rx => [
+      rx.id,
+      new Date(rx.issuedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      rx.doctorName,
+      rx.diagnosis.length > 40 ? rx.diagnosis.slice(0, 38) + '…' : rx.diagnosis,
+      rx.medications.map(m => m.name).join(', '),
+    ]);
+    y = addTable(doc, ['Rx ID', 'Issued', 'Doctor', 'Diagnosis', 'Medications'], rows, y, [26, 20, 32, 52, 40]);
+  }
+
+  // Vitals trend chart as a table + mini sparkline description
+  const patientVitals = vitals.filter(v => v.patientId === (patientProfile?.userId || patient.name)).slice(-12);
+  if (patientVitals.length) {
+    y = addSectionTitle(doc, `Vitals Log (${patientVitals.length} readings)`, y);
+    const rows = patientVitals.map(v => [
+      v.date,
+      `${v.bpSystolic}/${v.bpDiastolic} mmHg`,
+      `${v.heartRate} bpm`,
+      `${v.bloodSugar} mg/dL`,
+      `${v.weight} kg`,
+    ]);
+    y = addTable(doc, ['Date', 'BP', 'Pulse', 'Fasting Sugar', 'Weight'], rows, y, [26, 30, 26, 34, 30]);
+
+    // summarized trend one-liner
+    if (patientVitals.length >= 2) {
+      const first = patientVitals[0];
+      const last = patientVitals[patientVitals.length - 1];
+      const bpDelta = (last.bpSystolic + last.bpDiastolic) - (first.bpSystolic + first.bpDiastolic);
+      const trend = bpDelta < 0 ? 'improving ↓' : bpDelta > 0 ? 'rising ↑' : 'stable';
+      y = addBody(doc, `Blood pressure trend over this period: ${trend} (Δ ${Math.abs(bpDelta)} mmHg combined).`, y + 2);
+    }
+  }
+
+  // Health records / uploaded documents
+  const patientRecords = healthRecords.filter(r => r.patientId === (patientProfile?.userId || patient.name));
+  if (patientRecords.length) {
+    y = addSectionTitle(doc, `Uploaded Health Records (${patientRecords.length})`, y);
+    const rows = patientRecords.map(r => [
+      r.recordDate,
+      r.category,
+      r.title.length > 44 ? r.title.slice(0, 42) + '…' : r.title,
+      r.labName || '—',
+      r.fileName,
+    ]);
+    y = addTable(doc, ['Date', 'Category', 'Title', 'Lab / Facility', 'File'], rows, y, [18, 30, 52, 40, 20]);
+  }
+
+  // Doctor directory snapshot (approved doctors available on platform)
+  const approvedDoctors = doctors.filter(d => d.status === 'approved');
+  if (approvedDoctors.length) {
+    y = addSectionTitle(doc, `Platform Directory Snapshot (${approvedDoctors.length} verified doctors)`, y);
+    const rows = approvedDoctors.slice(0, 20).map(d => [
+      d.name,
+      d.specialization,
+      `${d.rating.toFixed(1)} ★`,
+      d.hospitalAffiliation,
+      `$${d.consultationFee}`,
+    ]);
+    y = addTable(doc, ['Doctor', 'Specialty', 'Rating', 'Hospital', 'Fee'], rows, y, [40, 36, 18, 48, 18]);
+    if (approvedDoctors.length > 20) {
+      y = addBody(doc, `… and ${approvedDoctors.length - 20} more verified specialists on the platform.`, y);
+    }
+  }
+
+  addFooter(doc);
+  buildBlobAndDownload(doc, `health_summary_${patient.email.replace(/[^a-z0-9]/gi, '_')}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin report: platform analytics snapshot                          */
+/* ------------------------------------------------------------------ */
+
+export function downloadAdminAnalyticsPdf({
+  appointments,
+  doctors,
+  prescriptions,
+  auditLogs,
+  platformConfig,
+  healthRecords,
+  vitals,
+}: {
+  appointments: Appointment[];
+  doctors: DoctorProfile[];
+  prescriptions: Prescription[];
+  auditLogs: AuditLog[];
+  platformConfig: PlatformConfig;
+  healthRecords: HealthRecord[];
+  vitals: VitalMeasurement[];
+}) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  let y = 44;
+
+  addHeader(doc, 'Platform Analytics Report', 'Administrative Oversight Console', 'Admin Authority');
+
+  const totalConsultations = appointments.length;
+  const completed = appointments.filter(a => a.status === 'completed').length;
+  const cancelled = appointments.filter(a => a.status === 'cancelled' || a.paymentStatus === 'refunded').length;
+  const grossRevenue = appointments.filter(a => a.paymentStatus === 'paid' || a.status === 'completed').reduce((s, a) => s + a.amount, 0);
+  const platformCut = Math.round(grossRevenue * platformConfig.platformCommissionPercent / 100);
+  const netDoctorPayout = grossRevenue - platformCut;
+  const activeDoctors = doctors.filter(d => d.status === 'approved').length;
+  const pendingDoctors = doctors.filter(d => d.status === 'pending').length;
+  const suspendedDoctors = doctors.filter(d => d.status === 'suspended').length;
+  const uniquePatients = new Set(appointments.map(a => a.patientId)).size;
+  const repeatPatients = (() => {
+    const counts: Record<string, number> = {};
+    appointments.forEach(a => { counts[a.patientId] = (counts[a.patientId] || 0) + 1; });
+    return Object.values(counts).filter(c => c > 1).length;
+  })();
+  const repeatRate = uniquePatients > 0 ? Math.round((repeatPatients / uniquePatients) * 100) : 0;
+  const nonCancelled = appointments.filter(a => a.status !== 'cancelled').length;
+  const completionRate = nonCancelled > 0 ? Math.round((completed / nonCancelled) * 100) : 100;
+
+  // KPI grid as a table
+  y = addSectionTitle(doc, 'Platform KPIs', y);
+  y = addTable(doc, ['Metric', 'Value', 'Notes'], [
+    ['Total Consultations', String(totalConsultations), 'All time'],
+    ['Completed', String(completed), `${completionRate}% completion rate`],
+    ['Cancelled / Refunded', String(cancelled), String(cancelled),
+    ],
+    ['Gross Platform Volume', `$${grossRevenue}.00`, 'Direct booking fees'],
+    ['Platform Commission', `${platformConfig.platformCommissionPercent}%`, `$${platformCut}.00 retained`],
+    ['Net Doctor Payouts', `$${netDoctorPayout}.00`, 'Disbursed to practitioners'],
+    ['Active Practitioners', String(activeDoctors), `${doctors.length} registered total`],
+    ['Pending Approval', String(pendingDoctors), 'Awaiting credential review'],
+    ['Suspended', String(suspendedDoctors), 'Restricted from directory'],
+    ['Unique Patients', String(uniquePatients), `${repeatRate}% repeat-booking rate`],
+    ['Health Records Stored', String(healthRecords.length), 'Patient-uploaded documents'],
+    ['Vitals Log Entries', String(vitals.length), 'Longitudinal measurements'],
+    ['Audit Log Entries', String(auditLogs.length), 'Security & action trail'],
+  ], y, [60, 40, 60]);
+
+  // Doctor utilization table
+  y = addSectionTitle(doc, 'Doctor Performance & Utilization', y);
+  const docRows = doctors.map(d => {
+    const docApts = appointments.filter(a => a.doctorId === d.id);
+    const [sh, sm] = (d.availableHours?.start || '09:00').split(':').map(Number);
+    const [eh, em] = (d.availableHours?.end || '17:00').split(':').map(Number);
+    const dur = d.slotDurationMinutes || 30;
+    const dailySlots = Math.floor(Math.max(60, eh * 60 + em - (sh * 60 + sm)) / dur);
+    const monthlyCap = dailySlots * Math.max(1, d.availableDays.length) * 4;
+    const util = monthlyCap > 0 ? Math.min(100, Math.round((docApts.length / monthlyCap) * 100)) : 0;
+    return [
+      d.name,
+      d.specialization,
+      d.status,
+      `${d.rating.toFixed(1)} ★`,
+      String(docApts.length),
+      `${util}%`,
+      `$${d.consultationFee}`,
+    ];
+  });
+  y = addTable(doc, ['Doctor', 'Specialty', 'Status', 'Rating', 'Visits', 'Utilization', 'Fee'], docRows, y, [40, 34, 22, 16, 14, 22, 16]);
+
+  // Appointment log table
+  y = addSectionTitle(doc, `Appointment Log (${appointments.length} records)`, y);
+  const aptRows = appointments.map(a => [
+    a.id,
+    a.date,
+    a.timeSlot,
+    a.patientName.length > 22 ? a.patientName.slice(0, 20) + '…' : a.patientName,
+    a.doctorName.length > 22 ? a.doctorName.slice(0, 20) + '…' : a.doctorName,
+    a.status.replace(/_/g, ' '),
+    a.paymentStatus,
+    `$${a.amount}`,
+  ]);
+  y = addTable(doc, ['ID', 'Date', 'Slot', 'Patient', 'Doctor', 'Status', 'Payment', 'Fee'], aptRows, y, [22, 16, 14, 28, 28, 22, 16, 14]);
+
+  addFooter(doc);
+  buildBlobAndDownload(doc, `admin_analytics_report_${new Date().toISOString().slice(0, 10)}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin report: consultation volume & completion status               */
+/* ------------------------------------------------------------------ */
+export function downloadConsultationReportPdf({ appointments }: { appointments: Appointment[] }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  let y = 20;
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, 297, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Consultation Volume & Completion Status', 14, 10);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}  ·  Total: ${appointments.length}`, 14, 17);
+  doc.setTextColor(33, 37, 41);
+  y = 28;
+  const rows = appointments.map((a) => [
+    a.id,
+    a.patientName,
+    a.doctorName,
+    `${a.date} ${a.timeSlot}`,
+    a.status.replace(/_/g, ' '),
+    a.callDurationSeconds ? `${Math.floor(a.callDurationSeconds / 60)}m ${a.callDurationSeconds % 60}s` : '—',
+    `$${a.amount}`,
+  ]);
+  y = addTable(doc, ['ID', 'Patient', 'Doctor', 'Date & Slot', 'Status', 'Call Length', 'Fee'], rows, y, [34, 46, 46, 40, 30, 26, 20]);
+  addFooter(doc);
+  buildBlobAndDownload(doc, `consultation_report_${new Date().toISOString().slice(0, 10)}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin report: doctor performance & utilization                      */
+/* ------------------------------------------------------------------ */
+export function downloadDoctorPerformancePdf({ doctors, appointments }: { doctors: DoctorProfile[]; appointments: Appointment[] }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  let y = 20;
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, 297, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Practitioner Workload, Utilization Rate & Reviews', 14, 10);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}  ·  Doctors: ${doctors.length}`, 14, 17);
+  doc.setTextColor(33, 37, 41);
+  y = 28;
+  const rows = doctors.map((d) => {
+    const docApts = appointments.filter((a) => a.doctorId === d.id);
+    const [sh, sm] = (d.availableHours?.start || '09:00').split(':').map(Number);
+    const [eh, em] = (d.availableHours?.end || '17:00').split(':').map(Number);
+    const dur = d.slotDurationMinutes || 30;
+    const dailySlots = Math.floor(Math.max(60, eh * 60 + em - (sh * 60 + sm)) / dur);
+    const monthlyCap = dailySlots * Math.max(1, d.availableDays.length) * 4;
+    const util = monthlyCap > 0 ? Math.min(100, Math.round((docApts.length / monthlyCap) * 100)) : 0;
+    return [d.name, d.specialization, `${d.rating.toFixed(1)} ★`, String(d.reviewCount), `$${d.consultationFee}`, d.status, `${util}%`];
+  });
+  y = addTable(doc, ['Doctor', 'Specialty', 'Rating', 'Reviews', 'Fee', 'Status', 'Utilization'], rows, y, [52, 46, 22, 22, 22, 26, 26]);
+  addFooter(doc);
+  buildBlobAndDownload(doc, `doctor_performance_report_${new Date().toISOString().slice(0, 10)}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin report: revenue & commission breakdown                        */
+/* ------------------------------------------------------------------ */
+export function downloadRevenueCommissionPdf({ appointments, platformConfig }: { appointments: Appointment[]; platformConfig: PlatformConfig }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  let y = 20;
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, 297, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Revenue & Commission Breakdown (${platformConfig.platformCommissionPercent}% platform cut)`, 14, 10);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`, 14, 17);
+  doc.setTextColor(33, 37, 41);
+  y = 28;
+  const rows = appointments.map((a) => {
+    const cut = Math.round(a.amount * (platformConfig.platformCommissionPercent / 100));
+    return [a.transactionId, a.doctorName, `$${a.amount}`, `$${cut}`, `$${a.amount - cut}`, a.paymentStatus];
+  });
+  y = addTable(doc, ['Transaction ID', 'Doctor', 'Amount', 'Platform Cut', 'Doctor Net Payout', 'Status'], rows, y, [52, 52, 26, 30, 34, 26]);
+  addFooter(doc);
+  buildBlobAndDownload(doc, `revenue_commission_report_${new Date().toISOString().slice(0, 10)}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin report: prescriptions aggregate                               */
+/* ------------------------------------------------------------------ */
+export function downloadPrescriptionsAggregatePdf({ prescriptions }: { prescriptions: Prescription[] }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  let y = 20;
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, 297, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Clinical Prescriptions Issued Across Platform (${prescriptions.length})`, 14, 10);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}`, 14, 17);
+  doc.setTextColor(33, 37, 41);
+  y = 28;
+  const rows = prescriptions.map((p) => [
+    p.id,
+    p.patientName,
+    p.doctorName,
+    p.diagnosis.length > 40 ? p.diagnosis.slice(0, 38) + '…' : p.diagnosis,
+    String(p.medications.length),
+    new Date(p.issuedAt).toLocaleDateString(),
+  ]);
+  y = addTable(doc, ['Rx ID', 'Patient', 'Doctor', 'Diagnosis', 'Meds', 'Issued'], rows, y, [40, 46, 46, 80, 16, 26]);
+  addFooter(doc);
+  buildBlobAndDownload(doc, `prescriptions_aggregate_report_${new Date().toISOString().slice(0, 10)}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin report: dispute & refund log                                  */
+/* ------------------------------------------------------------------ */
+export function downloadDisputeRefundLogPdf({ appointments }: { appointments: Appointment[] }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  let y = 20;
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, 297, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Dispute & Refund Log (Admin Audit)', 14, 10);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  const refunded = appointments.filter((a) => a.paymentStatus === 'refunded' || a.status === 'cancelled');
+  doc.text(`Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}  ·  Cases: ${refunded.length}`, 14, 17);
+  doc.setTextColor(33, 37, 41);
+  y = 28;
+  const rows = refunded.map((a) => [
+    a.id,
+    a.patientName,
+    a.doctorName,
+    a.date,
+    a.status.replace(/_/g, ' '),
+    a.paymentStatus,
+    `$${a.amount}`,
+    a.cancellationReason || 'Admin manual refund override.',
+  ]);
+  y = addTable(doc, ['Appointment', 'Patient', 'Doctor', 'Date', 'Status', 'Payment', 'Amount', 'Reason'], rows, y, [30, 40, 40, 22, 26, 24, 20, 60]);
+  addFooter(doc);
+  buildBlobAndDownload(doc, `dispute_refund_log_${new Date().toISOString().slice(0, 10)}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Doctor/patient: prescription PDF                                    */
+/* ------------------------------------------------------------------ */
+export function downloadPrescriptionPdf({ prescription }: { prescription: Prescription }) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  let y = 20;
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, 210, 24, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TeleDoc Clinical Network — Digital Prescription', 14, 11);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Rx ${prescription.id}  ·  Issued ${new Date(prescription.issuedAt).toLocaleDateString()}`, 14, 18);
+  doc.setTextColor(33, 37, 41);
+  y = 30;
+  y = addSectionTitle(doc, 'Prescriber', y);
+  y = addKeyValue(doc, [
+    ['Doctor', `${prescription.doctorName} (${prescription.doctorSpecialization})`],
+    ['License Reg', prescription.doctorRegNo],
+    ['Signature', prescription.doctorSignature || 'Digitally signed'],
+  ], y);
+  y = addSectionTitle(doc, 'Patient', y);
+  y = addKeyValue(doc, [
+    ['Name', prescription.patientName],
+    ['Age / Gender', `${prescription.patientAge} yrs / ${prescription.patientGender}`],
+    ['Blood Group', prescription.patientBloodGroup || '—'],
+    ['BP', prescription.vitals?.bp || '—'],
+  ], y);
+  y = addSectionTitle(doc, 'Diagnosis', y);
+  y = addBody(doc, prescription.diagnosis, y);
+  if (prescription.medications.length) {
+    y = addSectionTitle(doc, 'Prescribed Medications', y);
+    const rows = prescription.medications.map((m, i) => [String(i + 1), m.name, `${m.dosage} · ${m.frequency}`, m.duration, m.instructions]);
+    y = addTable(doc, ['#', 'Medication', 'Dosage / Frequency', 'Duration', 'Advice'], rows, y, [10, 46, 46, 26, 56]);
+  }
+  if (prescription.advice) {
+    y = addSectionTitle(doc, 'Advice', y);
+    y = addBody(doc, prescription.advice, y);
+  }
+  if (prescription.followUpDate) {
+    y = addSectionTitle(doc, 'Follow-Up', y);
+    y = addKeyValue(doc, [['Date', prescription.followUpDate]], y);
+  }
+  addFooter(doc);
+  buildBlobAndDownload(doc, `prescription_${prescription.id}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Patient: health record PDF summary                                  */
+/* ------------------------------------------------------------------ */
+export function downloadHealthRecordPdf({ record }: { record: HealthRecord }) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  let y = 20;
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, 210, 24, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TeleDoc Secure Health Record', 14, 11);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Confidential Medical Document', 14, 18);
+  doc.setTextColor(33, 37, 41);
+  y = 30;
+  y = addSectionTitle(doc, 'Document Details', y);
+  y = addKeyValue(doc, [
+    ['Title', record.title],
+    ['Category', record.category],
+    ['Record Date', record.recordDate],
+    ['Facility', record.labName || 'Clinical Diagnostic Lab'],
+    ['Original File', `${record.fileName} (${record.fileSize})`],
+    ['Patient ID', record.patientId],
+    ['Status', 'Encrypted at rest · Patient Vault'],
+  ], y);
+  y = addSectionTitle(doc, 'Clinical Notes & Lab Impression', y);
+  y = addBody(doc, record.notes || 'Normal study within expected reference ranges.', y);
+  addFooter(doc);
+  buildBlobAndDownload(doc, record.fileName.endsWith('.pdf') ? record.fileName.replace(/\.pdf$/i, '_summary.pdf') : `${record.fileName}_summary.pdf`);
+}

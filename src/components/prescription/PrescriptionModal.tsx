@@ -1,5 +1,6 @@
 import React from 'react';
 import { Prescription } from '../../types';
+import { downloadPrescriptionPdf } from '../../utils/pdfReport';
 import {
   X,
   Printer,
@@ -21,8 +22,8 @@ export const PrescriptionModal: React.FC<PrescriptionModalProps> = ({
 }) => {
   if (!prescription) return null;
 
-  const handlePrint = () => {
-    window.print();
+  const handleDownload = () => {
+    if (prescription) downloadPrescriptionPdf({ prescription });
   };
 
   return (
@@ -39,11 +40,11 @@ export const PrescriptionModal: React.FC<PrescriptionModalProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handlePrint}
+              onClick={handleDownload}
               className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
             >
               <Printer className="w-4 h-4" />
-              <span>Print / Save PDF</span>
+              <span>Download PDF</span>
             </button>
             <button
               onClick={onClose}

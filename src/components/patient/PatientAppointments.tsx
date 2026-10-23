@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Appointment } from '../../types';
+import { downloadPatientHealthSummaryPdf } from '../../utils/pdfReport';
 import {
   Calendar,
   Clock,
@@ -25,8 +26,12 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
     cancelAppointment,
     setActiveVideoAppointment,
     setViewingPrescription,
-    prescriptions,
-    submitRating,
+     prescriptions,
+     vitals,
+     healthRecords,
+     doctors,
+     patientProfile,
+     submitRating,
     platformConfig,
   } = useApp();
 
@@ -135,13 +140,32 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
           </p>
         </div>
 
-        <button
-          onClick={onBookNew}
-          className="self-start sm:self-auto px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-xs flex items-center gap-2"
-        >
-          <Calendar className="w-4 h-4" />
-          <span>Book New Consultation</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() =>
+              downloadPatientHealthSummaryPdf({
+                patient: { name: currentUser.name, email: currentUser.email },
+                patientProfile: patientProfile,
+                appointments: patientAppointments,
+                prescriptions: prescriptions.filter((p) => p.patientId === (currentUser.id || currentUser.name)),
+                healthRecords: (healthRecords || []).filter((r) => r.patientId === (currentUser.id || currentUser.name)),
+                vitals: (vitals || []).filter((v) => v.patientId === (currentUser.id || currentUser.name)),
+                doctors: doctors || [],
+              })
+            }
+            className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors shadow-xs flex items-center gap-2"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Download Health Summary PDF</span>
+          </button>
+          <button
+            onClick={onBookNew}
+            className="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-xs flex items-center gap-2"
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Book New Consultation</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Tabs */}

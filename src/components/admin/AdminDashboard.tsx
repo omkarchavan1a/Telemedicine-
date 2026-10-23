@@ -2,6 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DoctorProfile, Appointment } from '../../types';
 import {
+  downloadConsultationReportPdf,
+  downloadDoctorPerformancePdf,
+  downloadRevenueCommissionPdf,
+  downloadPrescriptionsAggregatePdf,
+  downloadDisputeRefundLogPdf,
+  downloadAdminAnalyticsPdf,
+} from '../../utils/pdfReport';
+import {
   BarChart3,
   TrendingUp,
   DollarSign,
@@ -30,9 +38,11 @@ export const AdminDashboard: React.FC = () => {
     appointments,
     cancelAppointment,
     updateAppointmentStatus,
-    prescriptions,
-    auditLogs,
-    platformConfig,
+     prescriptions,
+     auditLogs,
+     healthRecords,
+     vitals,
+     platformConfig,
     updatePlatformConfig,
     currentTab,
     setCurrentTab,
@@ -384,6 +394,13 @@ export const AdminDashboard: React.FC = () => {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => downloadAdminAnalyticsPdf({ appointments, doctors, prescriptions, auditLogs, platformConfig, healthRecords, vitals })}
+              className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download Analytics PDF</span>
+            </button>
           </div>
 
           {/* Report 1: Consultation Report */}
@@ -399,24 +416,11 @@ export const AdminDashboard: React.FC = () => {
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    const headers = ['Appointment ID', 'Patient', 'Doctor', 'Date', 'Slot', 'Status', 'Duration Sec', 'Amount'];
-                    const rows = appointments.map((a) => [
-                      a.id,
-                      a.patientName,
-                      a.doctorName,
-                      a.date,
-                      a.timeSlot,
-                      a.status,
-                      a.callDurationSeconds || 0,
-                      `$${a.amount}`,
-                    ]);
-                    downloadCSV('consultation_report_2026', headers, rows);
-                  }}
+                  onClick={() => downloadConsultationReportPdf({ appointments })}
                   className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors self-start sm:self-auto"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download CSV</span>
+                  <span>Download PDF</span>
                 </button>
               </div>
 
@@ -478,32 +482,11 @@ export const AdminDashboard: React.FC = () => {
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    const headers = ['Doctor Name', 'Specialization', 'Rating', 'Reviews', 'Fee', 'Status', 'Calculated Utilization'];
-                    const rows = doctors.map((d) => {
-                      const docApts = appointments.filter((a) => a.doctorId === d.id);
-                      const [startH, startM] = (d.availableHours?.start || '09:00').split(':').map(Number);
-                      const [endH, endM] = (d.availableHours?.end || '17:00').split(':').map(Number);
-                      const duration = d.slotDurationMinutes || 30;
-                      const dailySlots = Math.floor(Math.max(60, (endH * 60 + endM) - (startH * 60 + startM)) / duration);
-                      const monthlyCapacity = dailySlots * Math.max(1, d.availableDays.length) * 4;
-                      const utilRate = monthlyCapacity > 0 ? Math.min(100, Math.round((docApts.length / monthlyCapacity) * 100)) : 0;
-                      return [
-                        d.name,
-                        d.specialization,
-                        d.rating,
-                        d.reviewCount,
-                        `$${d.consultationFee}`,
-                        d.status,
-                        `${utilRate}%`,
-                      ];
-                    });
-                    downloadCSV('doctor_performance_report', headers, rows);
-                  }}
+                  onClick={() => downloadDoctorPerformancePdf({ doctors, appointments })}
                   className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors self-start sm:self-auto"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download CSV</span>
+                  <span>Download PDF</span>
                 </button>
               </div>
 
@@ -585,25 +568,11 @@ export const AdminDashboard: React.FC = () => {
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    const headers = ['Transaction ID', 'Doctor', 'Amount', `Platform Cut (${platformConfig.platformCommissionPercent}%)`, 'Doctor Net Payout', 'Status'];
-                    const rows = appointments.map((a) => {
-                      const cut = Math.round(a.amount * (platformConfig.platformCommissionPercent / 100));
-                      return [
-                        a.transactionId,
-                        a.doctorName,
-                        `$${a.amount}`,
-                        `$${cut}`,
-                        `$${a.amount - cut}`,
-                        a.paymentStatus,
-                      ];
-                    });
-                    downloadCSV('revenue_commission_report', headers, rows);
-                  }}
+                  onClick={() => downloadRevenueCommissionPdf({ appointments, platformConfig })}
                   className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors self-start sm:self-auto"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download CSV</span>
+                  <span>Download PDF</span>
                 </button>
               </div>
 
@@ -686,22 +655,11 @@ export const AdminDashboard: React.FC = () => {
                   Clinical Prescriptions Issued Across Platform ({prescriptions.length})
                 </h3>
                 <button
-                  onClick={() => {
-                    const headers = ['Prescription ID', 'Patient', 'Doctor', 'Diagnosis', 'Medications Count', 'Date Issued'];
-                    const rows = prescriptions.map((p) => [
-                      p.id,
-                      p.patientName,
-                      p.doctorName,
-                      p.diagnosis,
-                      p.medications.length,
-                      p.issuedAt,
-                    ]);
-                    downloadCSV('prescriptions_aggregate_report', headers, rows);
-                  }}
+                  onClick={() => downloadPrescriptionsAggregatePdf({ prescriptions })}
                   className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download CSV</span>
+                  <span>Download PDF</span>
                 </button>
               </div>
 
@@ -730,9 +688,18 @@ export const AdminDashboard: React.FC = () => {
           {/* Report 6: Dispute & Refund Log */}
           {selectedReport === 'disputes' && (
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-              <h3 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-3">
-                Dispute & Refund Log (Admin Audit)
-              </h3>
+               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                 <h3 className="text-base font-bold text-slate-900">
+                   Dispute & Refund Log (Admin Audit)
+                 </h3>
+                 <button
+                   onClick={() => downloadDisputeRefundLogPdf({ appointments })}
+                   className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                 >
+                   <Download className="w-3.5 h-3.5" />
+                   <span>Download PDF</span>
+                 </button>
+               </div>
               <div className="space-y-3 text-xs">
                 {appointments
                   .filter((a) => a.paymentStatus === 'refunded' || a.status === 'cancelled')

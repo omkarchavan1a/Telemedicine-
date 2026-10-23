@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Appointment } from '../../types';
+import { downloadDoctorVisitSummaryPdf } from '../../utils/pdfReport';
 import { JpgAvatarUploader } from '../common/JpgAvatarUploader';
 import {
   Users,
@@ -35,8 +36,10 @@ export const DoctorDashboard: React.FC = () => {
     prescriptions,
     setDoctorPrescriptionTargetApt,
     updateDoctorProfile,
-    platformConfig,
-  } = useApp();
+     platformConfig,
+     vitals,
+     healthRecords,
+   } = useApp();
 
   const [queueFilter, setQueueFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [showDoctorDpEdit, setShowDoctorDpEdit] = useState(false);
@@ -596,16 +599,34 @@ export const DoctorDashboard: React.FC = () => {
                       </button>
                     )}
 
-                    {/* View Issued Prescription if completed */}
-                    {rx && (
-                      <button
-                        onClick={() => setViewingPrescription(rx)}
-                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>View Issued Rx</span>
-                      </button>
-                    )}
+                     {/* View Issued Prescription if completed */}
+                     {rx && (
+                       <button
+                         onClick={() => setViewingPrescription(rx)}
+                         className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
+                       >
+                         <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                         <span>View Issued Rx</span>
+                       </button>
+                     )}
+
+                     <button
+                       onClick={() =>
+                         downloadDoctorVisitSummaryPdf({
+                           appointment: apt,
+                           prescription: rx,
+                           patientProfile: null,
+                           doctor: activeDoctor,
+                           vitals: vitals || [],
+                           healthRecords: healthRecords || [],
+                           platformConfig,
+                         })
+                       }
+                       className="px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
+                     >
+                       <FileText className="w-3.5 h-3.5" />
+                       <span>Download Visit Summary PDF</span>
+                     </button>
                   </div>
                 </div>
               );
