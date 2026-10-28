@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://tele-medicine-dusky.vercel.app/sitemap.xml

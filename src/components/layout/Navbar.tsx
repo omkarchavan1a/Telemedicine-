@@ -115,7 +115,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
               id="brand-logo"
               type="button"
               onClick={() => setCurrentTab('home')}
-              aria-label="TeleDoc home"
+              aria-label="TeleDoc Virtual Care home"
               className="flex items-center gap-3 cursor-pointer group rounded-xl px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             >
               <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-xs group-hover:shadow-md group-hover:scale-105 transition-all">
@@ -550,6 +550,7 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
                 />
               ) : (
                 <div
+                  role="img"
                   aria-label={currentUser.name || 'User'}
                   className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold ring-2 ring-white shadow-2xs"
                 >
