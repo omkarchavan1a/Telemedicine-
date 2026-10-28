@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DoctorProfile, Appointment } from '../../types';
+import { generateTimeSlots, isPastSlot, isSlotBooked, localDateKey } from '../../utils/timeSlots';
 import confetti from 'canvas-confetti';
+import QRCode from 'qrcode';
 import {
   X,
   Calendar as CalendarIcon,
@@ -42,12 +44,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [paymentSessionStatus, setPaymentSessionStatus] = useState<'active' | 'success' | 'cancelled' | 'expired'>('active');
   const [timeLeft, setTimeLeft] = useState<number>(300); // 5 minutes = 300 seconds
   const [copiedUpi, setCopiedUpi] = useState(false);
+  const [upiQrDataUrl, setUpiQrDataUrl] = useState('');
 
   // Selected date (defaults to next available date)
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
     today.setDate(today.getDate() + 1);
-    return today.toISOString().split('T')[0];
+    return localDateKey(today);
   });
 
   const [selectedSlot, setSelectedSlot] = useState<string>('');
@@ -78,6 +81,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       }
     };
   }, []);
+
+  // Generate a genuine UPI QR code for the consultation amount
+  useEffect(() => {
+    if (!doctor) return;
+    const upiUrl = `upi://pay?pa=7391977021@ybl&pn=TeleDoc&am=${doctor.consultationFee}&cu=INR&tn=Consultation%20${encodeURIComponent(doctor.name)}`;
+    QRCode.toDataURL(upiUrl, { width: 224, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } })
+      .then(setUpiQrDataUrl)
+      .catch(() => setUpiQrDataUrl(''));
+  }, [doctor]);
 
   const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -124,34 +136,46 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return doctor.blockedDates.includes(selectedDate);
   }, [doctor, selectedDate]);
 
-  // Calculate real available time slots for doctor based on their schedule hours & duration
-  const availableSlots = useMemo(() => {
+  // Track "now" so availability refreshes for the current time
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Calculate real time slots for doctor based on their schedule hours & duration
+  const generatedSlots = useMemo(() => {
     if (!doctor || !isDayAvailable || isDateBlocked) return [];
+    return generateTimeSlots(doctor, selectedDate);
+  }, [doctor, selectedDate, isDayAvailable, isDateBlocked]);
 
-    const [startH, startM] = (doctor.availableHours?.start || '09:00').split(':').map(Number);
-    const [endH, endM] = (doctor.availableHours?.end || '17:00').split(':').map(Number);
-    const duration = doctor.slotDurationMinutes || 30;
-
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
-
-    const generated: string[] = [];
-    for (let time = startMinutes; time + duration <= endMinutes; time += duration) {
-      const h = Math.floor(time / 60);
-      const m = time % 60;
-      const period = h >= 12 ? 'PM' : 'AM';
-      const displayH = h % 12 === 0 ? 12 : h % 12;
-      const displayM = m.toString().padStart(2, '0');
-      generated.push(`${displayH.toString().padStart(2, '0')}:${displayM} ${period}`);
-    }
-
-    // Filter out already booked slots for this doctor on this date (atomic prevention)
-    const booked = appointments
+  const bookedSlots = useMemo(() => {
+    if (!doctor) return [];
+    return appointments
       .filter((a) => a.doctorId === doctor.id && a.date === selectedDate && a.status !== 'cancelled')
       .map((a) => a.timeSlot);
+  }, [doctor, selectedDate, appointments]);
 
-    return generated.filter((slot) => !booked.includes(slot));
-  }, [doctor, selectedDate, isDayAvailable, isDateBlocked, appointments]);
+  // Only upcoming (current-time relevant) slots are bookable
+  const slotItems = useMemo(() => {
+    return generatedSlots
+      .filter((slot) => !isPastSlot(selectedDate, slot, now))
+      .map((slot) => ({
+        slot,
+        occupied: bookedSlots.includes(slot),
+      }));
+  }, [generatedSlots, bookedSlots, selectedDate, now]);
+
+  const availableSlots = useMemo(() => {
+    return slotItems.filter((s) => !s.occupied).map((s) => s.slot);
+  }, [slotItems]);
+
+  // Release selection if it becomes occupied or no longer offered
+  useEffect(() => {
+    if (selectedSlot && !availableSlots.includes(selectedSlot)) {
+      setSelectedSlot('');
+    }
+  }, [availableSlots, selectedSlot]);
 
   if (!doctor) return null;
 
@@ -205,6 +229,34 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setStep(2);
   };
 
+  const isValidCardNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length < 13 || digits.length > 19) return false;
+    if (/^(\d)\1+$/.test(digits)) return false;
+    const dummyNumbers = new Set([
+      '4242424242424242',
+      '4111111111111111',
+      '4000000000000002',
+      '5555555555554444',
+      '378282246310005',
+      '6011111111111117',
+      '3056930009020004',
+    ]);
+    if (dummyNumbers.has(digits)) return false;
+    let sum = 0;
+    let shouldDouble = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+      let digit = Number(digits[i]);
+      if (shouldDouble) {
+        digit *= 2;
+        if (digit > 9) digit -= 9;
+      }
+      sum += digit;
+      shouldDouble = !shouldDouble;
+    }
+    return sum % 10 === 0;
+  };
+
   const handleConfirmAndPay = () => {
     setPayError('');
     if (timeLeft <= 0 || paymentSessionStatus === 'expired') {
@@ -214,11 +266,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     // Validate payment instrument before authorizing
     if (paymentMethod === 'Credit/Debit Card') {
-      const digits = cardNumber.replace(/\D/g, '');
-      if (digits.length < 12 || digits.length > 19) {
-        setPayError('Please enter a valid card number (12–19 digits).');
-        return;
-      }
+       const digits = cardNumber.replace(/\D/g, '');
+       if (!isValidCardNumber(digits)) {
+         setPayError('Please enter a valid, non-dummy card number that passes Luhn validation.');
+         return;
+       }
       const expiryMatch = cardExpiry.trim().match(/^(0[1-9]|1[0-2])\/(\d{2})$/);
       if (!expiryMatch) {
         setPayError('Please enter the card expiry as MM/YY.');
@@ -385,7 +437,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <input
                 id="booking-date-input"
                 type="date"
-                min={new Date().toISOString().split('T')[0]}
+                 min={localDateKey()}
                 value={selectedDate}
                 onChange={(e) => {
                   setSelectedDate(e.target.value);
@@ -425,7 +477,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <Clock className="w-3.5 h-3.5 text-indigo-600" />
                 Available Time Slots ({doctor.slotDurationMinutes || 30}-min increments)
               </label>
-              {availableSlots.length === 0 ? (
+               {slotItems.length === 0 ? (
                 <div className="p-4 bg-amber-50 text-amber-800 rounded-xl text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>
@@ -433,27 +485,32 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       ? `No clinic hours on ${DAY_NAMES[selectedDayOfWeek]}. Please select an active day.`
                       : isDateBlocked
                       ? 'Doctor is on leave on this date. Please select another date.'
-                      : 'All slots are fully booked for this date. Please select another date.'}
+                      : 'No upcoming time slots are available for this date. Please select another date.'}
                   </span>
                 </div>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {availableSlots.map((slot) => (
+                  {slotItems.map(({ slot, occupied }) => (
                     <button
                       key={slot}
                       type="button"
-                      id={`slot-btn-${slot.replace(/[:\s]/g, '-')}`}
+                      disabled={occupied}
+                      id={`slot-btn-${slot.replace(/[:\\s]/g, '-')}`}
                       onClick={() => {
+                        if (occupied) return;
                         setSelectedSlot(slot);
                         setFormError('');
                       }}
                       className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                        selectedSlot === slot
+                        occupied
+                          ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed line-through'
+                          : selectedSlot === slot
                           ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300'
                       }`}
                     >
                       {slot}
+                      {occupied && <span className="block text-[9px] font-bold text-rose-500 no-underline">Booked</span>}
                     </button>
                   ))}
                 </div>
@@ -491,8 +548,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
             {/* Price Banner */}
             <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
-              <span className="text-slate-600 font-medium">Standard Consultation Fee:</span>
-              <span className="text-base font-extrabold text-slate-900">${doctor.consultationFee}.00</span>
+              <span className="text-slate-600 font-medium">Standard Consultation Fee (₹):</span>
+              <span className="text-base font-extrabold text-slate-900">₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -544,8 +601,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <span className="font-bold text-blue-700">{doctor.name} ({doctor.specialization})</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Consultation Fee:</span>
-                    <span className="font-bold text-slate-800">${doctor.consultationFee}.00</span>
+                    <span className="text-slate-500">Consultation Fee (₹):</span>
+                    <span className="font-bold text-slate-800">₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-slate-200">
                     <span className="text-slate-500">Transaction Status:</span>
@@ -613,8 +670,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <span className="font-bold text-blue-800">{doctor.name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-amber-900/70">Amount Due:</span>
-                    <span className="font-bold text-slate-800">${doctor.consultationFee}.00</span>
+                    <span className="text-amber-900/70">Amount Due (₹):</span>
+                    <span className="font-bold text-slate-800">₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-amber-200">
                     <span className="text-amber-900/70">Resolution:</span>
@@ -736,12 +793,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <span>{doctor.name} ({doctor.specialization})</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Platform Booking Fee:</span>
-                    <span className="text-emerald-600 font-bold">$0.00 (Waived)</span>
+                    <span>Platform Booking Fee (₹):</span>
+                    <span className="text-emerald-600 font-bold">₹0 (Waived)</span>
                   </div>
                   <div className="pt-2 border-t border-slate-200 flex justify-between font-extrabold text-sm text-slate-900">
-                    <span>Total Amount Due:</span>
-                    <span className="text-blue-700">${doctor.consultationFee}.00</span>
+                    <span>Total Amount Due (₹):</span>
+                    <span className="text-blue-700">₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </div>
                 </div>
 
@@ -864,38 +921,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">
                     {/* Simulated Dynamic UPI QR Code */}
                     <div className="p-4 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center gap-4">
-                      <div className="w-28 h-28 bg-slate-900 text-white p-2 rounded-xl flex flex-col items-center justify-center relative shrink-0 shadow-inner">
-                        {/* Dynamic QR pattern simulation */}
-                        <div className="grid grid-cols-5 gap-1 w-full h-full p-1 bg-white rounded-lg">
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-200 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-purple-600 rounded-xs" />
-                          <div className="bg-purple-600 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-200 rounded-xs" />
-                          <div className="bg-slate-200 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-purple-600 rounded-xs" />
-                          <div className="bg-slate-200 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-200 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-200 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                          <div className="bg-slate-900 rounded-xs" />
-                        </div>
-                        <span className="absolute bottom-1 text-[8px] bg-slate-900 text-white font-mono px-1 rounded">
-                          UPI QR
-                        </span>
+                      <div className="w-28 h-28 bg-white p-1.5 rounded-xl flex items-center justify-center shrink-0 shadow-inner border border-slate-200">
+                        {upiQrDataUrl ? (
+                          <img src={upiQrDataUrl} alt="UPI QR code" className="w-full h-full object-contain rounded-lg" />
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Generating QR…</span>
+                        )}
                       </div>
 
                       <div className="text-left space-y-1.5">
@@ -904,7 +935,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                           <span>Scan with Any UPI Application</span>
                         </div>
                         <p className="text-[11px] text-slate-600">
-                          Open Google Pay, PhonePe, Paytm, BHIM, or your bank app to scan and authorize <strong>${doctor.consultationFee}.00</strong>.
+                          Open Google Pay, PhonePe, Paytm, BHIM, or your bank app to scan and authorize <strong>₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong>.
                         </p>
                         <div className="flex items-center gap-2 pt-1">
                           <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded font-mono text-[10px] font-semibold">
@@ -1000,8 +1031,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         <CheckCircle2 className="w-4 h-4" />
                         <span>
                           {paymentMethod === 'UPI'
-                            ? `Approve UPI Payment & Pay $${doctor.consultationFee}.00`
-                            : `Pay $${doctor.consultationFee}.00 & Confirm`}
+                            ? `Approve UPI Payment & Pay ₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`
+                            : `Pay ₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} & Confirm`}
                         </span>
                       </>
                     )}
@@ -1028,7 +1059,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 Payment Successful & Consultation Confirmed!
               </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Your payment of <strong>${confirmedApt.amount}.00</strong> via <strong>{confirmedApt.paymentMethod}</strong> has been successfully authorized and your video appointment slot is locked.
+                Your payment of <strong>₹${String(confirmedApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong> via <strong>{confirmedApt.paymentMethod}</strong> has been successfully authorized and your video appointment slot is locked.
               </p>
             </div>
 
@@ -1057,7 +1088,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
               <div className="flex justify-between pt-2 border-t border-slate-200">
                 <span className="text-slate-500 font-semibold">Total Paid:</span>
-                <span className="font-extrabold text-emerald-700 text-sm">${confirmedApt.amount}.00</span>
+                <span className="font-extrabold text-emerald-700 text-sm">₹${String(confirmedApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
               </div>
             </div>
 

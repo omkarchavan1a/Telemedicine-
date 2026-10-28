@@ -196,9 +196,9 @@ export function downloadDoctorVisitSummaryPdf({
     ['Reason for Visit', appointment.reason || 'Not specified'],
     ['Symptoms Reported', appointment.symptoms || 'Not documented'],
     ['Duration', appointment.callDurationSeconds ? `${Math.floor(appointment.callDurationSeconds / 60)}m ${appointment.callDurationSeconds % 60}s` : 'Not recorded'],
-    ['Fee', `$${appointment.amount}.00 (${appointment.paymentStatus})`],
+    ['Fee', `₹${appointment.amount} (${appointment.paymentStatus})`],
     ['Status', appointment.status.replace(/_/g, ' ')],
-    ['Platform Commission', `${platformConfig.platformCommissionPercent}% ($${Math.round(appointment.amount * platformConfig.platformCommissionPercent / 100)})`],
+    ['Platform Commission', `${platformConfig.platformCommissionPercent}% (₹${Math.round(appointment.amount * platformConfig.platformCommissionPercent / 100)})`],
   ], y);
 
   // Allergy & condition alert box if present
@@ -451,7 +451,7 @@ export function downloadPatientHealthSummaryPdf({
       d.specialization,
       `${d.rating.toFixed(1)} ★`,
       d.hospitalAffiliation,
-      `$${d.consultationFee}`,
+      `₹${d.consultationFee}`,
     ]);
     y = addTable(doc, ['Doctor', 'Specialty', 'Rating', 'Hospital', 'Fee'], rows, y, [40, 36, 18, 48, 18]);
     if (approvedDoctors.length > 20) {
@@ -515,7 +515,7 @@ export function downloadAdminAnalyticsPdf({
     ['Completed', String(completed), `${completionRate}% completion rate`],
     ['Cancelled / Refunded', String(cancelled), String(cancelled),
     ],
-    ['Gross Platform Volume', `$${grossRevenue}.00`, 'Direct booking fees'],
+    ['Gross Platform Volume', `₹${grossRevenue}`, 'Direct booking fees'],
     ['Platform Commission', `${platformConfig.platformCommissionPercent}%`, `$${platformCut}.00 retained`],
     ['Net Doctor Payouts', `$${netDoctorPayout}.00`, 'Disbursed to practitioners'],
     ['Active Practitioners', String(activeDoctors), `${doctors.length} registered total`],
@@ -544,7 +544,7 @@ export function downloadAdminAnalyticsPdf({
       `${d.rating.toFixed(1)} ★`,
       String(docApts.length),
       `${util}%`,
-      `$${d.consultationFee}`,
+      `₹${d.consultationFee}`,
     ];
   });
   y = addTable(doc, ['Doctor', 'Specialty', 'Status', 'Rating', 'Visits', 'Utilization', 'Fee'], docRows, y, [40, 34, 22, 16, 14, 22, 16]);
@@ -559,7 +559,7 @@ export function downloadAdminAnalyticsPdf({
     a.doctorName.length > 22 ? a.doctorName.slice(0, 20) + '…' : a.doctorName,
     a.status.replace(/_/g, ' '),
     a.paymentStatus,
-    `$${a.amount}`,
+    `₹${a.amount}`,
   ]);
   y = addTable(doc, ['ID', 'Date', 'Slot', 'Patient', 'Doctor', 'Status', 'Payment', 'Fee'], aptRows, y, [22, 16, 14, 28, 28, 22, 16, 14]);
 
@@ -591,7 +591,7 @@ export function downloadConsultationReportPdf({ appointments }: { appointments: 
     `${a.date} ${a.timeSlot}`,
     a.status.replace(/_/g, ' '),
     a.callDurationSeconds ? `${Math.floor(a.callDurationSeconds / 60)}m ${a.callDurationSeconds % 60}s` : '—',
-    `$${a.amount}`,
+    `₹${a.amount}`,
   ]);
   y = addTable(doc, ['ID', 'Patient', 'Doctor', 'Date & Slot', 'Status', 'Call Length', 'Fee'], rows, y, [34, 46, 46, 40, 30, 26, 20]);
   addFooter(doc);
@@ -623,7 +623,7 @@ export function downloadDoctorPerformancePdf({ doctors, appointments }: { doctor
     const dailySlots = Math.floor(Math.max(60, eh * 60 + em - (sh * 60 + sm)) / dur);
     const monthlyCap = dailySlots * Math.max(1, d.availableDays.length) * 4;
     const util = monthlyCap > 0 ? Math.min(100, Math.round((docApts.length / monthlyCap) * 100)) : 0;
-    return [d.name, d.specialization, `${d.rating.toFixed(1)} ★`, String(d.reviewCount), `$${d.consultationFee}`, d.status, `${util}%`];
+    return [d.name, d.specialization, `${d.rating.toFixed(1)} ★`, String(d.reviewCount), `₹${d.consultationFee}`, d.status, `${util}%`];
   });
   y = addTable(doc, ['Doctor', 'Specialty', 'Rating', 'Reviews', 'Fee', 'Status', 'Utilization'], rows, y, [52, 46, 22, 22, 22, 26, 26]);
   addFooter(doc);
@@ -649,7 +649,7 @@ export function downloadRevenueCommissionPdf({ appointments, platformConfig }: {
   y = 28;
   const rows = appointments.map((a) => {
     const cut = Math.round(a.amount * (platformConfig.platformCommissionPercent / 100));
-    return [a.transactionId, a.doctorName, `$${a.amount}`, `$${cut}`, `$${a.amount - cut}`, a.paymentStatus];
+    return [a.transactionId, a.doctorName, `₹${a.amount}`, `₹${cut}`, `₹${a.amount - cut}`, a.paymentStatus];
   });
   y = addTable(doc, ['Transaction ID', 'Doctor', 'Amount', 'Platform Cut', 'Doctor Net Payout', 'Status'], rows, y, [52, 52, 26, 30, 34, 26]);
   addFooter(doc);
@@ -711,7 +711,7 @@ export function downloadDisputeRefundLogPdf({ appointments }: { appointments: Ap
     a.date,
     a.status.replace(/_/g, ' '),
     a.paymentStatus,
-    `$${a.amount}`,
+    `₹${a.amount}`,
     a.cancellationReason || 'Admin manual refund override.',
   ]);
   y = addTable(doc, ['Appointment', 'Patient', 'Doctor', 'Date', 'Status', 'Payment', 'Amount', 'Reason'], rows, y, [30, 40, 40, 22, 26, 24, 20, 60]);

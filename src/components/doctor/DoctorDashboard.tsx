@@ -68,7 +68,7 @@ export const DoctorDashboard: React.FC = () => {
     setProfileError('');
     const feeNum = Number(editFee);
     if (!Number.isFinite(feeNum) || feeNum < platformConfig.minFeeLimit || feeNum > platformConfig.maxFeeLimit) {
-      setProfileError(`Consultation fee must be between $${platformConfig.minFeeLimit} and $${platformConfig.maxFeeLimit}.`);
+      setProfileError(`Consultation fee must be between ₹${platformConfig.minFeeLimit} and ₹${platformConfig.maxFeeLimit}.`);
       return;
     }
     updateDoctorProfile(doctorId, {
@@ -342,7 +342,7 @@ export const DoctorDashboard: React.FC = () => {
               </div>
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  Consultation Fee ($ {platformConfig.minFeeLimit}–{platformConfig.maxFeeLimit})
+                  Consultation Fee (₹ {platformConfig.minFeeLimit}–{platformConfig.maxFeeLimit})
                 </label>
                 <input
                   type="number"
@@ -557,7 +557,7 @@ export const DoctorDashboard: React.FC = () => {
                       </span>
                       <span>•</span>
                       <span className="text-slate-600">
-                        Fee: <strong>${apt.amount}</strong> ({apt.paymentStatus})
+                        Fee: <strong>₹${String(apt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong> ({apt.paymentStatus})
                       </span>
                     </div>
 

@@ -260,7 +260,7 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
                       </span>
                       <span className="flex items-center gap-1 text-slate-500">
                         <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                        ${apt.amount}.00 ({apt.paymentStatus})
+                        ₹${String(apt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} ({apt.paymentStatus})
                       </span>
                     </div>
 
@@ -426,7 +426,7 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
                 Cancel Appointment with {cancelModalApt.doctorName}?
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Cancellations made more than {platformConfig.cancellationWindowHours} hours before the slot are eligible for an immediate full automated refund (${cancelModalApt.amount}.00).
+                Cancellations made more than {platformConfig.cancellationWindowHours} hours before the slot are eligible for an immediate full automated refund (₹${String(cancelModalApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}).
               </p>
             </div>
 

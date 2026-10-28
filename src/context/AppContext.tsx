@@ -14,6 +14,7 @@ import {
   AdminRegistrationInput,
   PatientRegistrationInput,
 } from '../types';
+import { generateTimeSlots, isPastSlot, localDateKey, parseSlotToMinutes } from '../utils/timeSlots';
 import {
   INITIAL_USERS,
   INITIAL_PATIENT_PROFILE,
@@ -1203,6 +1204,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!data.reason || !data.reason.trim()) {
       throw new Error('Please specify the primary reason for your consultation.');
     }
+    // Strict time-slot validation
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date)) {
+      throw new Error('Please provide a valid consultation date (YYYY-MM-DD).');
+    }
+    if (parseSlotToMinutes(data.timeSlot) === null) {
+      throw new Error('Please provide a valid consultation time slot (e.g. 09:00 AM).');
+    }
+    const [y, m, d] = data.date.split('-').map(Number);
+    const selectedDateObj = new Date(y, m - 1, d);
+    if (Number.isNaN(selectedDateObj.getTime())) {
+      throw new Error('Please provide a valid consultation date.');
+    }
+    const todayKey = localDateKey();
+    if (data.date < todayKey) {
+      throw new Error('Consultation date must be today or in the future.');
+    }
+    if (isPastSlot(data.date, data.timeSlot)) {
+      throw new Error('The selected time slot has already passed. Please choose an upcoming slot.');
+    }
+    if (!doc.availableDays.includes(selectedDateObj.getDay())) {
+      throw new Error(`Dr. ${doc.name} is not available on ${selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' })}.`);
+    }
+    if (doc.blockedDates.includes(data.date)) {
+      throw new Error(`Dr. ${doc.name} is unavailable on ${data.date}. Please select another date.`);
+    }
+    const validSlots = generateTimeSlots(doc, data.date);
+    if (!validSlots.includes(data.timeSlot)) {
+      throw new Error("The selected time slot is not part of this doctor's schedule.");
+    }
     // Atomic double-booking guard: slot must still be free at confirm time
     const slotTaken = appointments.some(
       (a) => a.doctorId === data.doctorId && a.date === data.date && a.timeSlot === data.timeSlot && a.status !== 'cancelled'
@@ -1239,7 +1269,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog(
       'APPOINTMENT_CONFIRMED',
       `${newApt.doctorName} on ${newApt.date} at ${newApt.timeSlot}`,
-      `Atomic booking confirmed. Transaction ${txnId} verified ($${amount}).`
+      `Atomic booking confirmed. Transaction ${txnId} verified (₹${amount}).`
     );
     return newApt;
   };

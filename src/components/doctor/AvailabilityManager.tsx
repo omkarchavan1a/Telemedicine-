@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { localDateKey } from '../../utils/timeSlots';
 import {
   Calendar,
   Clock,
@@ -216,12 +217,12 @@ export const AvailabilityManager: React.FC = () => {
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-3">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-emerald-600" />
-              Standard Consultation Fee
+              Standard Consultation Fee (₹)
             </h3>
 
             <div className="flex items-center gap-3">
               <div className="relative flex-1">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold">₹</span>
                 <input
                   type="number"
                   min="20"
@@ -276,7 +277,7 @@ export const AvailabilityManager: React.FC = () => {
         <div className="flex items-center gap-3 pt-2 max-w-sm">
           <input
             type="date"
-            min={new Date().toISOString().split('T')[0]}
+            min={localDateKey()}
             value={newBlockDate}
             onChange={(e) => setNewBlockDate(e.target.value)}
             className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"

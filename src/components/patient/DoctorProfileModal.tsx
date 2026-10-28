@@ -86,7 +86,7 @@ export const DoctorProfileModal: React.FC<DoctorProfileModalProps> = ({
             <div className="bg-slate-50 p-2.5 sm:p-3.5 rounded-2xl text-center border border-slate-100">
               <ShieldCheck className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
               <div className="text-[11px] sm:text-xs text-slate-500 font-medium">Standard Fee</div>
-              <div className="text-sm sm:text-base font-extrabold text-slate-900">${doctor.consultationFee}</div>
+              <div className="text-sm sm:text-base font-extrabold text-slate-900">₹${doctor.consultationFee}</div>
             </div>
           </div>
 
@@ -169,7 +169,7 @@ export const DoctorProfileModal: React.FC<DoctorProfileModalProps> = ({
             className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2"
           >
             <Calendar className="w-4 h-4" />
-            <span>Book Consultation (${doctor.consultationFee})</span>
+            <span>Book Consultation (₹{doctor.consultationFee})</span>
           </button>
         </div>
       </div>

@@ -190,7 +190,7 @@ export function matchDoctorsToPatient(
     if (intake.priorityPreference === 'budget_friendly') {
       if (doc.consultationFee <= 75) {
         score += 15;
-        reasons.push(`Budget-Friendly: Competitive consultation fee of $${doc.consultationFee}.`);
+        reasons.push(`Budget-Friendly: Competitive consultation fee of ₹${doc.consultationFee}.`);
       } else if (doc.consultationFee > 100) {
         score -= 8;
       }

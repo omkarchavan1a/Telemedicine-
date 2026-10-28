@@ -112,13 +112,13 @@ export const DoctorAnalytics: React.FC = () => {
         {/* 3 Overview Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="text-xs text-slate-500 font-medium">Net Doctor Earnings (Disbursed)</div>
+            <div className="text-xs text-slate-500 font-medium">Net Doctor Earnings (₹, Disbursed)</div>
             <div className="text-2xl font-extrabold text-slate-900 mt-0.5">
-              ${netEarnings.toLocaleString()}.00
+              ₹${String(netEarnings).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
             </div>
             <div className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1 font-semibold">
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>Calculated net after {platformConfig.platformCommissionPercent}% platform fee</span>
+              <span>Calculated net after {platformConfig.platformCommissionPercent}% platform fee (₹)</span>
             </div>
           </div>
 
@@ -162,7 +162,7 @@ export const DoctorAnalytics: React.FC = () => {
             return (
               <div key={d.label} className="flex flex-col items-center gap-2 h-full justify-end group">
                 <div className="text-[11px] font-bold text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                  ${d.earnings}
+                  ₹${String(d.earnings).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 </div>
                 <div
                   style={{ height: `${heightPercent}%` }}
