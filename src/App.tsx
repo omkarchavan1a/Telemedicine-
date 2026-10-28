@@ -1,23 +1,23 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { DoctorProfile } from './types';
 import { Navbar } from './components/layout/Navbar';
-import { PatientFrontPage } from './components/patient/PatientFrontPage';
-import { DoctorDirectory } from './components/patient/DoctorDirectory';
-import { DoctorProfileModal } from './components/patient/DoctorProfileModal';
-import { BookingModal } from './components/patient/BookingModal';
-import { PatientAppointments } from './components/patient/PatientAppointments';
-import { HealthRecordsVault } from './components/patient/HealthRecordsVault';
-import { MedicalProfileView } from './components/patient/MedicalProfileView';
-import { DoctorDashboard } from './components/doctor/DoctorDashboard';
-import { AvailabilityManager } from './components/doctor/AvailabilityManager';
-import { DoctorAnalytics } from './components/doctor/DoctorAnalytics';
-import { PrescriptionPadModal } from './components/doctor/PrescriptionPadModal';
-import { PrescriptionModal } from './components/prescription/PrescriptionModal';
-import { VideoRoom } from './components/video/VideoRoom';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { AuthModal } from './components/auth/AuthModal';
-import { SecurityCheckpoint } from './components/auth/SecurityCheckpoint';
+const PatientFrontPage = lazy(() => import('./components/patient/PatientFrontPage').then((m) => ({ default: m.PatientFrontPage })));
+const DoctorDirectory = lazy(() => import('./components/patient/DoctorDirectory').then((m) => ({ default: m.DoctorDirectory })));
+const DoctorProfileModal = lazy(() => import('./components/patient/DoctorProfileModal').then((m) => ({ default: m.DoctorProfileModal })));
+const BookingModal = lazy(() => import('./components/patient/BookingModal').then((m) => ({ default: m.BookingModal })));
+const PatientAppointments = lazy(() => import('./components/patient/PatientAppointments').then((m) => ({ default: m.PatientAppointments })));
+const HealthRecordsVault = lazy(() => import('./components/patient/HealthRecordsVault').then((m) => ({ default: m.HealthRecordsVault })));
+const MedicalProfileView = lazy(() => import('./components/patient/MedicalProfileView').then((m) => ({ default: m.MedicalProfileView })));
+const DoctorDashboard = lazy(() => import('./components/doctor/DoctorDashboard').then((m) => ({ default: m.DoctorDashboard })));
+const AvailabilityManager = lazy(() => import('./components/doctor/AvailabilityManager').then((m) => ({ default: m.AvailabilityManager })));
+const DoctorAnalytics = lazy(() => import('./components/doctor/DoctorAnalytics').then((m) => ({ default: m.DoctorAnalytics })));
+const PrescriptionPadModal = lazy(() => import('./components/doctor/PrescriptionPadModal').then((m) => ({ default: m.PrescriptionPadModal })));
+const PrescriptionModal = lazy(() => import('./components/prescription/PrescriptionModal').then((m) => ({ default: m.PrescriptionModal })));
+const VideoRoom = lazy(() => import('./components/video/VideoRoom').then((m) => ({ default: m.VideoRoom })));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const AuthModal = lazy(() => import('./components/auth/AuthModal').then((m) => ({ default: m.AuthModal })));
+const SecurityCheckpoint = lazy(() => import('./components/auth/SecurityCheckpoint').then((m) => ({ default: m.SecurityCheckpoint })));
 import {
   ShieldCheck,
   PhoneCall,
@@ -224,7 +224,9 @@ const MainContent: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <MainContent />
+      <Suspense fallback={null}>
+        <MainContent />
+      </Suspense>
     </AppProvider>
   );
 }
