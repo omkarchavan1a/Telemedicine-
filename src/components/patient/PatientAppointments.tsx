@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Appointment } from '../../types';
 import { downloadPatientHealthSummaryPdf } from '../../utils/pdfReport';
+import {
+  getAppointmentScheduleInfo,
+  playAppointmentChime,
+} from '../../utils/timeSlots';
 import {
   Calendar,
   Clock,
@@ -10,9 +14,11 @@ import {
   Star,
   XCircle,
   CheckCircle2,
-  DollarSign,
+  IndianRupee,
   AlertTriangle,
   Send,
+  Sparkles,
+  PlayCircle,
 } from 'lucide-react';
 
 interface PatientAppointmentsProps {
@@ -25,15 +31,22 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
     appointments,
     cancelAppointment,
     setActiveVideoAppointment,
+    updateAppointmentStatus,
     setViewingPrescription,
-     prescriptions,
-     vitals,
-     healthRecords,
-     doctors,
-     patientProfile,
-     submitRating,
+    prescriptions,
+    vitals,
+    healthRecords,
+    doctors,
+    patientProfile,
+    submitRating,
     platformConfig,
   } = useApp();
+
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const [activeTab, setActiveTab] = useState<'all' | 'upcoming' | 'completed'>('all');
   const [ratingAptId, setRatingAptId] = useState<string | null>(null);
@@ -225,12 +238,19 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
               apt.status === 'in_waiting_room' ||
               apt.status === 'in_consultation' ||
               apt.status === 'scheduled';
+            const schedule = getAppointmentScheduleInfo(apt.date, apt.timeSlot, 30, now);
 
             return (
               <div
                 key={apt.id}
                 id={`appointment-card-${apt.id}`}
-                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:border-blue-200 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className={`bg-white rounded-2xl border p-5 shadow-xs transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                  schedule.isLiveNow && isJoinable
+                    ? 'border-emerald-400 ring-2 ring-emerald-200/70 bg-gradient-to-r from-emerald-50/30 to-white'
+                    : schedule.isApproaching && isJoinable
+                    ? 'border-amber-300 ring-1 ring-amber-200 bg-amber-50/20'
+                    : 'border-slate-200 hover:border-blue-200'
+                }`}
               >
                 {/* Doctor info & appointment time */}
                 <div className="flex items-start gap-4">
@@ -240,16 +260,26 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
                     className="w-14 h-14 rounded-2xl object-cover ring-1 ring-slate-200 shrink-0"
                     referrerPolicy="no-referrer"
                   />
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-base text-slate-900">{apt.doctorName}</span>
                       <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-medium">
                         {apt.doctorSpecialization}
                       </span>
                       {getStatusBadge(apt.status)}
+
+                      {/* Schedule status badge */}
+                      {isJoinable && (
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${schedule.badgeStyle}`}
+                        >
+                          <Clock className="w-3 h-3" />
+                          <span>{schedule.badgeText}</span>
+                        </span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-4 text-xs text-slate-500 font-medium">
+                    <div className="flex items-center gap-4 text-xs text-slate-500 font-medium flex-wrap">
                       <span className="flex items-center gap-1 text-slate-700 font-semibold">
                         <Calendar className="w-3.5 h-3.5 text-blue-600" />
                         {apt.date}
@@ -259,10 +289,32 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
                         {apt.timeSlot}
                       </span>
                       <span className="flex items-center gap-1 text-slate-500">
-                        <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                        ₹${String(apt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} ({apt.paymentStatus})
+                        <IndianRupee className="w-3.5 h-3.5 text-emerald-600" />
+                        ₹{String(apt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} ({apt.paymentStatus})
                       </span>
                     </div>
+
+                    {/* Schedule Live Countdown Callout */}
+                    {isJoinable && (
+                      <div className="pt-0.5">
+                        {schedule.isLiveNow ? (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-extrabold bg-emerald-100/90 text-emerald-900 border border-emerald-300 shadow-2xs">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                            <span>Schedule Time Arrived: Video consultation is active now! ({schedule.countdownFormatted})</span>
+                          </div>
+                        ) : schedule.isApproaching ? (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-amber-100/90 text-amber-900 border border-amber-300">
+                            <Sparkles className="w-3 h-3 text-amber-700 animate-spin" />
+                            <span>Scheduled start in {schedule.countdownFormatted} · Waiting room open</span>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>Video call will be ready at scheduled time ({schedule.countdownFormatted})</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <p className="text-xs text-slate-600">
                       <strong className="text-slate-800">Reason:</strong> {apt.reason}
@@ -291,20 +343,62 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
                 <div className="flex flex-wrap md:flex-col items-center md:items-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
                   {/* Join Video Room button if scheduled or waiting room */}
                   {isJoinable && (
-                    <button
-                      id={`join-call-btn-${apt.id}`}
-                      onClick={() => setActiveVideoAppointment(apt)}
-                      className={`w-full md:w-auto px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs flex items-center justify-center gap-1.5 transition-colors ${
-                        apt.status === 'in_waiting_room' || apt.status === 'in_consultation'
-                          ? 'bg-rose-600 hover:bg-rose-700 animate-pulse'
-                          : 'bg-blue-600 hover:bg-blue-700'
-                      }`}
-                    >
-                      <Video className="w-4 h-4" />
-                      <span>
-                        {apt.status === 'in_waiting_room' ? 'Doctor Ready — Join Call' : 'Enter Video Room'}
-                      </span>
-                    </button>
+                    <div className="w-full md:w-auto flex flex-col items-stretch md:items-end gap-1.5">
+                      {schedule.isLiveNow || apt.status === 'in_consultation' ? (
+                        <button
+                          id={`join-call-btn-${apt.id}`}
+                          onClick={() => {
+                            if (apt.status === 'scheduled') {
+                              updateAppointmentStatus(apt.id, 'in_waiting_room');
+                            }
+                            setActiveVideoAppointment(apt);
+                          }}
+                          className="w-full md:w-auto px-4 py-2.5 rounded-xl text-xs font-black text-white shadow-md flex items-center justify-center gap-1.5 transition-all bg-emerald-600 hover:bg-emerald-700 animate-pulse ring-2 ring-emerald-400"
+                        >
+                          <Video className="w-4 h-4" />
+                          <span>Start Video Call Now (Live)</span>
+                        </button>
+                      ) : schedule.isApproaching || apt.status === 'in_waiting_room' ? (
+                        <button
+                          id={`join-call-btn-${apt.id}`}
+                          onClick={() => {
+                            if (apt.status === 'scheduled') {
+                              updateAppointmentStatus(apt.id, 'in_waiting_room');
+                            }
+                            setActiveVideoAppointment(apt);
+                          }}
+                          className="w-full md:w-auto px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs flex items-center justify-center gap-1.5 transition-colors bg-amber-600 hover:bg-amber-700 animate-pulse"
+                        >
+                          <Video className="w-4 h-4" />
+                          <span>Enter Waiting Room ({schedule.badgeText})</span>
+                        </button>
+                      ) : (
+                        <button
+                          id={`join-call-btn-${apt.id}`}
+                          onClick={() => setActiveVideoAppointment(apt)}
+                          className="w-full md:w-auto px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs flex items-center justify-center gap-1.5 transition-colors bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Video className="w-4 h-4" />
+                          <span>Enter Video Room (Preview)</span>
+                        </button>
+                      )}
+
+                      {/* Instant Demonstration / Test Trigger */}
+                      {schedule.isFuture && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateAppointmentStatus(apt.id, 'in_waiting_room');
+                            setActiveVideoAppointment(apt);
+                          }}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold underline self-center md:self-end flex items-center gap-1"
+                          title="Start video call now ahead of scheduled time for instant demonstration"
+                        >
+                          <PlayCircle className="w-3 h-3" />
+                          <span>Start Call Now (Early)</span>
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   {/* View Digital Prescription if issued */}
@@ -426,7 +520,7 @@ export const PatientAppointments: React.FC<PatientAppointmentsProps> = ({ onBook
                 Cancel Appointment with {cancelModalApt.doctorName}?
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Cancellations made more than {platformConfig.cancellationWindowHours} hours before the slot are eligible for an immediate full automated refund (₹${String(cancelModalApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}).
+                Cancellations made more than {platformConfig.cancellationWindowHours} hours before the slot are eligible for an immediate full automated refund (₹{String(cancelModalApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}).
               </p>
             </div>
 

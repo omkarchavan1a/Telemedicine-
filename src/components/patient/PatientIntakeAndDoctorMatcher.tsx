@@ -22,7 +22,7 @@ import {
   Stethoscope,
   ArrowRight,
   Filter,
-  DollarSign,
+  IndianRupee,
   Languages,
   Check,
 } from 'lucide-react';
@@ -601,7 +601,7 @@ export const PatientIntakeAndDoctorMatcher: React.FC<PatientIntakeAndDoctorMatch
                         Consultation Fee (₹)
                       </div>
                       <div className="text-3xl font-black text-slate-900 font-display">
-                        ₹${topMatch.doctor.consultationFee}
+                        ₹{topMatch.doctor.consultationFee}
                       </div>
                       <div className="text-[11px] text-slate-500 mt-0.5">
                         {topMatch.doctor.slotDurationMinutes} min live video consult
@@ -745,7 +745,7 @@ export const PatientIntakeAndDoctorMatcher: React.FC<PatientIntakeAndDoctorMatch
                   <div className="px-5 py-3.5 bg-slate-50/60 border-t border-slate-200/60 flex items-center justify-between gap-2 backdrop-blur-xs">
                     <div>
                       <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Fee</div>
-                      <div className="text-lg font-black text-slate-900">₹${doc.consultationFee}</div>
+                      <div className="text-lg font-black text-slate-900">₹{doc.consultationFee}</div>
                     </div>
 
                     <div className="flex items-center gap-2">

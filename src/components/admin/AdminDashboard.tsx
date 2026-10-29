@@ -12,7 +12,7 @@ import {
 import {
   BarChart3,
   TrendingUp,
-  DollarSign,
+  IndianRupee,
   Users,
   ShieldCheck,
   UserCheck,
@@ -196,13 +196,13 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="p-4 bg-slate-800/80 rounded-2xl border border-slate-700/60">
             <div className="text-xs text-slate-400 font-medium">Gross Platform Volume</div>
-            <div className="text-2xl font-extrabold text-white mt-1">₹${String(grossRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
+            <div className="text-2xl font-extrabold text-white mt-1">₹{String(grossRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
             <div className="text-[11px] text-slate-400 mt-1">Direct booking fees</div>
           </div>
 
           <div className="p-4 bg-slate-800/80 rounded-2xl border border-slate-700/60">
             <div className="text-xs text-slate-400 font-medium">Platform Net Revenue</div>
-            <div className="text-2xl font-extrabold text-purple-300 mt-1">₹${String(netPlatformRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
+            <div className="text-2xl font-extrabold text-purple-300 mt-1">₹{String(netPlatformRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
             <div className="text-[11px] text-purple-400 mt-1">{platformConfig.platformCommissionPercent}% platform commission</div>
           </div>
 
@@ -214,7 +214,7 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="p-4 bg-slate-800/80 rounded-2xl border border-slate-700/60 col-span-2 lg:col-span-1">
             <div className="text-xs text-slate-400 font-medium">Refunds & Disputes</div>
-            <div className="text-2xl font-extrabold text-rose-400 mt-1">₹${String(totalRefunds).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
+            <div className="text-2xl font-extrabold text-rose-400 mt-1">₹{String(totalRefunds).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
             <div className="text-[11px] text-rose-300 mt-1">{cancelledConsultations} cancelled</div>
           </div>
         </div>
@@ -460,7 +460,7 @@ export const AdminDashboard: React.FC = () => {
                         <td className="py-3 px-3 text-slate-500">
                           {a.callDurationSeconds ? `${Math.floor(a.callDurationSeconds / 60)}m ${a.callDurationSeconds % 60}s` : '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-bold text-slate-900">₹${String(a.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</td>
+                        <td className="py-3 px-3 text-right font-bold text-slate-900">₹{String(a.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -532,7 +532,7 @@ export const AdminDashboard: React.FC = () => {
                               <span className="font-semibold text-slate-700">{utilRate}%</span>
                             </div>
                           </td>
-                          <td className="py-3 px-3 font-bold text-slate-900">₹${String(doc.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</td>
+                          <td className="py-3 px-3 font-bold text-slate-900">₹{String(doc.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</td>
                           <td className="py-3 px-3 capitalize">
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -579,15 +579,15 @@ export const AdminDashboard: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
                   <span className="text-xs text-slate-500 font-medium">Total Paid Volume</span>
-                  <div className="text-xl font-extrabold text-slate-900 mt-1">₹${String(grossRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
+                  <div className="text-xl font-extrabold text-slate-900 mt-1">₹{String(grossRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
                 </div>
                 <div className="p-4 bg-purple-50 rounded-2xl border border-purple-200">
                   <span className="text-xs text-purple-700 font-medium">Platform Commission ({platformConfig.platformCommissionPercent}%)</span>
-                  <div className="text-xl font-extrabold text-purple-900 mt-1">₹${String(netPlatformRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
+                  <div className="text-xl font-extrabold text-purple-900 mt-1">₹{String(netPlatformRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
                 </div>
                 <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200">
                   <span className="text-xs text-emerald-700 font-medium">Net Doctor Disbursements</span>
-                  <div className="text-xl font-extrabold text-emerald-900 mt-1">₹${String(grossRevenue - netPlatformRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
+                  <div className="text-xl font-extrabold text-emerald-900 mt-1">₹{String(grossRevenue - netPlatformRevenue).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div>
                 </div>
               </div>
             </div>
@@ -707,7 +707,7 @@ export const AdminDashboard: React.FC = () => {
                     <div key={apt.id} className="p-4 bg-rose-50/60 border border-rose-200 rounded-2xl space-y-1">
                       <div className="flex justify-between font-bold text-rose-900">
                         <span>Appointment {apt.id}</span>
-                        <span>Refunded ₹${String(apt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
+                        <span>Refunded ₹{String(apt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                       </div>
                       <div className="text-slate-600">
                         Patient: {apt.patientName} · Doctor: {apt.doctorName}

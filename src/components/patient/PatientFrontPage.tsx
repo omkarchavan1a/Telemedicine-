@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getIntakeProgress, isIntakeComplete } from '../../lib/patientIntake';
+import { getAppointmentScheduleInfo } from '../../utils/timeSlots';
 import {
   ArrowRight,
   Calendar,
@@ -19,6 +20,7 @@ import {
   Syringe,
   Eye,
   CheckCircle2,
+  Clock,
 } from 'lucide-react';
 
 const SPECIALTIES: { name: string; blurb: string; Icon: React.ElementType }[] = [
@@ -56,7 +58,22 @@ const STEPS = [
 ];
 
 export const PatientFrontPage: React.FC = () => {
-  const { currentUser, patientProfile, doctors, appointments, healthRecords, setCurrentTab } = useApp();
+  const {
+    currentUser,
+    patientProfile,
+    doctors,
+    appointments,
+    healthRecords,
+    setCurrentTab,
+    setActiveVideoAppointment,
+    updateAppointmentStatus,
+  } = useApp();
+
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const approvedDoctors = doctors.filter((d) => d.status === 'approved');
   const specialtiesCount = new Set(approvedDoctors.map((d) => d.specialization)).size;
@@ -169,28 +186,93 @@ export const PatientFrontPage: React.FC = () => {
       </div>
 
       {/* Continue care: next appointment */}
-      {upcoming && (
-        <div className="liquid-glass-card rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0">
-              <Video className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-blue-600">Up next in your care</div>
-              <div className="text-sm font-bold text-slate-900 truncate">
-                {upcoming.doctorName} · {upcoming.date} at {upcoming.timeSlot}
+      {upcoming && (() => {
+        const schedule = getAppointmentScheduleInfo(upcoming.date, upcoming.timeSlot, 30, now);
+        const isLive = schedule.isLiveNow || upcoming.status === 'in_consultation';
+
+        return (
+          <div
+            className={`rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border transition-all ${
+              isLive
+                ? 'bg-emerald-50/90 border-emerald-300 ring-2 ring-emerald-300 shadow-emerald-100 shadow-md'
+                : schedule.isApproaching
+                ? 'bg-amber-50/80 border-amber-300 ring-1 ring-amber-200'
+                : 'liquid-glass-card'
+            }`}
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div
+                className={`w-11 h-11 rounded-2xl text-white flex items-center justify-center shrink-0 ${
+                  isLive ? 'bg-emerald-600 animate-pulse' : 'bg-blue-600'
+                }`}
+              >
+                <Video className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[11px] font-bold uppercase tracking-wider ${
+                      isLive ? 'text-emerald-800' : 'text-blue-600'
+                    }`}
+                  >
+                    {isLive
+                      ? 'Scheduled Time Arrived · Live Consultation Now'
+                      : schedule.isApproaching
+                      ? 'Starting Soon · Waiting Room Open'
+                      : 'Up next in your care'}
+                  </span>
+                  {isLive && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />}
+                </div>
+                <div className="text-sm font-bold text-slate-900 truncate">
+                  {upcoming.doctorName} · {upcoming.date} at {upcoming.timeSlot}
+                </div>
+                <div className="text-xs text-slate-500 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{schedule.countdownFormatted}</span>
+                </div>
               </div>
             </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {isLive ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (upcoming.status === 'scheduled') {
+                      updateAppointmentStatus(upcoming.id, 'in_waiting_room');
+                    }
+                    setActiveVideoAppointment(upcoming);
+                  }}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition-colors flex items-center gap-2 animate-pulse ring-2 ring-emerald-300"
+                >
+                  <Video className="w-4 h-4" />
+                  <span>Start Video Call Now (Live)</span>
+                </button>
+              ) : schedule.isApproaching ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateAppointmentStatus(upcoming.id, 'in_waiting_room');
+                    setActiveVideoAppointment(upcoming);
+                  }}
+                  className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-2 shadow-xs"
+                >
+                  <Video className="w-4 h-4" />
+                  <span>Enter Waiting Room</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('appointments')}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shrink-0"
+                >
+                  View Consultations
+                </button>
+              )}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setCurrentTab('appointments')}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shrink-0"
-          >
-            View Consultations
-          </button>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Platform at a glance */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

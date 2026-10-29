@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Appointment } from '../../types';
+import { getAppointmentScheduleInfo, playAppointmentChime } from '../../utils/timeSlots';
 import {
   Mic,
   MicOff,
@@ -24,6 +25,9 @@ import {
   VolumeX,
   Activity,
   Camera,
+  Calendar,
+  Bell,
+  PlayCircle,
 } from 'lucide-react';
 
 interface VideoRoomProps {
@@ -54,6 +58,29 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment, onClose }) =>
   const [inWaitingRoom, setInWaitingRoom] = useState(
     appointment.status === 'in_waiting_room' && currentRole === 'patient'
   );
+
+  const [scheduleNow, setScheduleNow] = useState(() => new Date());
+  const hasChimedRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setScheduleNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const scheduleInfo = getAppointmentScheduleInfo(
+    appointment.date,
+    appointment.timeSlot,
+    30,
+    scheduleNow
+  );
+
+  // Play chime when scheduled time arrives while in waiting room
+  useEffect(() => {
+    if (inWaitingRoom && scheduleInfo.isLiveNow && !hasChimedRef.current) {
+      hasChimedRef.current = true;
+      playAppointmentChime();
+    }
+  }, [inWaitingRoom, scheduleInfo.isLiveNow]);
 
   // Doctor audio toggle
   const [doctorVoiceEnabled, setDoctorVoiceEnabled] = useState(false);
@@ -550,6 +577,42 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment, onClose }) =>
             </div>
           </div>
 
+          {/* Scheduled Appointment Time Card & Countdown */}
+          <div
+            className={`p-3.5 rounded-2xl border text-left flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              scheduleInfo.isLiveNow
+                ? 'bg-emerald-950/70 border-emerald-500/60 text-white shadow-emerald-950/50 shadow-md ring-1 ring-emerald-500/40'
+                : 'bg-slate-800/80 border-slate-700 text-slate-200'
+            }`}
+          >
+            <div className="space-y-0.5 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold flex items-center gap-1.5 text-white">
+                  <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Scheduled Time: {appointment.date} · {appointment.timeSlot}</span>
+                </span>
+                {scheduleInfo.isLiveNow && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                {scheduleInfo.isLiveNow
+                  ? 'Scheduled start time has arrived! Video consultation is ready to begin now.'
+                  : `Your consultation window will open at ${appointment.timeSlot} (${scheduleInfo.countdownFormatted}).`}
+              </p>
+            </div>
+
+            <div
+              className={`px-3 py-1.5 rounded-xl font-mono text-xs font-extrabold shrink-0 self-start sm:self-auto ${
+                scheduleInfo.isLiveNow
+                  ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/50 animate-pulse'
+                  : 'bg-blue-500/20 text-blue-300 border border-blue-400/40'
+              }`}
+            >
+              {scheduleInfo.isLiveNow ? '● Live Now' : scheduleInfo.countdownFormatted}
+            </div>
+          </div>
+
           {/* Doctor Info & Ready State */}
           <div className="flex items-center gap-3 p-3 bg-slate-800/80 rounded-2xl text-left border border-slate-700">
             <img
@@ -563,7 +626,11 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment, onClose }) =>
               <p className="text-xs text-slate-400 truncate">{appointment.doctorSpecialization}</p>
               <div className="flex items-center gap-2 mt-0.5 text-[11px] text-emerald-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Physician is in session & reviewing your chart</span>
+                <span>
+                  {scheduleInfo.isLiveNow
+                    ? 'Physician is online & ready for scheduled consultation'
+                    : 'Physician is reviewing chart · Ready for scheduled start'}
+                </span>
               </div>
             </div>
           </div>
@@ -579,10 +646,18 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment, onClose }) =>
             <button
               id="admit-to-call-btn"
               onClick={() => setInWaitingRoom(false)}
-              className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-900/40 transition-all flex items-center gap-2 animate-pulse"
+              className={`px-6 py-2.5 rounded-xl text-xs font-black shadow-lg transition-all flex items-center gap-2 ${
+                scheduleInfo.isLiveNow
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black shadow-emerald-900/50 ring-2 ring-emerald-300 animate-pulse'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-900/40'
+              }`}
             >
               <VideoIcon className="w-4 h-4" />
-              <span>Connect Live Video Call</span>
+              <span>
+                {scheduleInfo.isLiveNow
+                  ? 'Start Scheduled Call (Live Now)'
+                  : 'Connect Video Call Now'}
+              </span>
             </button>
           </div>
         </div>
@@ -603,6 +678,11 @@ export const VideoRoom: React.FC<VideoRoomProps> = ({ appointment, onClose }) =>
           <div className="text-xs text-slate-300 hidden sm:block">
             <strong className="text-white">{appointment.doctorName}</strong> with{' '}
             <span className="text-slate-300">{appointment.patientName}</span>
+          </div>
+          <span className="text-slate-600 hidden md:inline">|</span>
+          <div className="hidden md:flex items-center gap-1.5 text-xs text-blue-300 bg-blue-950/60 px-2.5 py-0.5 rounded-full border border-blue-800/50">
+            <Calendar className="w-3 h-3 text-blue-400" />
+            <span>Scheduled: {appointment.timeSlot}</span>
           </div>
         </div>
 

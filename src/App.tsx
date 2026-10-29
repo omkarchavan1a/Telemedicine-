@@ -15,6 +15,7 @@ const DoctorAnalytics = lazy(() => import('./components/doctor/DoctorAnalytics')
 const PrescriptionPadModal = lazy(() => import('./components/doctor/PrescriptionPadModal').then((m) => ({ default: m.PrescriptionPadModal })));
 const PrescriptionModal = lazy(() => import('./components/prescription/PrescriptionModal').then((m) => ({ default: m.PrescriptionModal })));
 const VideoRoom = lazy(() => import('./components/video/VideoRoom').then((m) => ({ default: m.VideoRoom })));
+const ScheduledCallAlertBanner = lazy(() => import('./components/video/ScheduledCallAlertBanner').then((m) => ({ default: m.ScheduledCallAlertBanner })));
 const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
 const AuthModal = lazy(() => import('./components/auth/AuthModal').then((m) => ({ default: m.AuthModal })));
 const SecurityCheckpoint = lazy(() => import('./components/auth/SecurityCheckpoint').then((m) => ({ default: m.SecurityCheckpoint })));
@@ -168,6 +169,9 @@ const MainContent: React.FC = () => {
           }}
         />
       )}
+
+      {/* 6. Real-Time Scheduled Call Start & Live Notification Banner */}
+      <ScheduledCallAlertBanner />
 
       {/* Footer & Compliance Safeguards */}
       <footer className="no-print relative z-10 liquid-glass border-t border-white/80 mt-12 py-8 text-xs text-slate-500">

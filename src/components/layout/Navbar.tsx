@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
 import { isNavActive } from '../../lib/navigation';
+import { getAppointmentScheduleInfo } from '../../utils/timeSlots';
 import {
   Activity,
   UserCheck,
@@ -64,10 +65,22 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
     };
   }, [showRoleMenu]);
 
-  // Check if there is any active or waiting room appointment
-  const waitingOrActiveApt = appointments.find(
-    (a) => a.status === 'in_waiting_room' || a.status === 'in_consultation'
-  );
+  const [navNow, setNavNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNavNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Check if there is any active, waiting room, or scheduled appointment whose time has arrived
+  const waitingOrActiveApt = appointments.find((a) => {
+    if (a.status === 'completed' || a.status === 'cancelled' || a.status === 'no_show') return false;
+    if (a.status === 'in_waiting_room' || a.status === 'in_consultation') return true;
+    if (a.status === 'scheduled') {
+      const sch = getAppointmentScheduleInfo(a.date, a.timeSlot, 30, navNow);
+      return sch.isLiveNow;
+    }
+    return false;
+  });
 
   const getRoleBadge = (role: UserRole) => {
     switch (role) {
@@ -132,17 +145,30 @@ export const Navbar: React.FC<NavbarProps> = (props) => {
             </button>
 
             {/* Live Consultation Notification Pill if any */}
-            {waitingOrActiveApt && (
-              <button
-                id="active-call-quick-pill"
-                onClick={() => setActiveVideoAppointment(waitingOrActiveApt)}
-                className="hidden md:flex items-center gap-2 px-3 py-1 bg-rose-50/90 text-rose-700 border border-rose-200 rounded-full text-xs font-bold hover:bg-rose-100 transition-all shadow-xs animate-pulse"
-              >
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                <Video className="w-3.5 h-3.5" />
-                <span>Call Ready: {waitingOrActiveApt.doctorName}</span>
-              </button>
-            )}
+            {waitingOrActiveApt && (() => {
+              const sch = getAppointmentScheduleInfo(waitingOrActiveApt.date, waitingOrActiveApt.timeSlot, 30, navNow);
+              const isLive = sch.isLiveNow || waitingOrActiveApt.status === 'in_consultation';
+
+              return (
+                <button
+                  id="active-call-quick-pill"
+                  onClick={() => setActiveVideoAppointment(waitingOrActiveApt)}
+                  className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-all shadow-xs animate-pulse ${
+                    isLive
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 ring-1 ring-emerald-300'
+                      : 'bg-rose-50/90 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-emerald-500 animate-ping' : 'bg-rose-500'}`} />
+                  <Video className="w-3.5 h-3.5" />
+                  <span>
+                    {isLive
+                      ? `Live Call: ${waitingOrActiveApt.doctorName} (${waitingOrActiveApt.timeSlot})`
+                      : `Call Ready: ${waitingOrActiveApt.doctorName}`}
+                  </span>
+                </button>
+              );
+            })()}
           </div>
 
           {/* Bento-Segmented Navigation Links */}

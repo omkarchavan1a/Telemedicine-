@@ -12,7 +12,7 @@ import {
   Phone,
   Building,
   Award,
-  DollarSign,
+  IndianRupee,
   KeyRound,
   CheckCircle,
   CheckCircle2,

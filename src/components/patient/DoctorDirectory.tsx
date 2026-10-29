@@ -10,7 +10,7 @@ import {
   Award,
   CheckCircle2,
   Calendar,
-  DollarSign,
+  IndianRupee,
   Filter,
   Languages,
   Lock,
@@ -381,9 +381,9 @@ export const DoctorDirectory: React.FC<DoctorDirectoryProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+              <IndianRupee className="w-3.5 h-3.5 text-slate-400" />
               <span className="font-semibold text-slate-700">Max Fee (₹):</span>
-              <span className="font-bold text-blue-700">₹${maxFee}</span>
+              <span className="font-bold text-blue-700">₹{maxFee}</span>
               <input
                 id="filter-fee-range"
                 type="range"
@@ -493,7 +493,7 @@ export const DoctorDirectory: React.FC<DoctorDirectoryProps> = ({
               <div className="px-5 py-3.5 bg-slate-50/60 border-t border-slate-200/60 flex items-center justify-between gap-2 backdrop-blur-xs">
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Consultation</div>
-                  <div className="text-lg font-black text-slate-900">₹${doc.consultationFee}</div>
+                  <div className="text-lg font-black text-slate-900">₹{doc.consultationFee}</div>
                 </div>
 
                 <div className="flex items-center gap-2">

@@ -549,7 +549,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {/* Price Banner */}
             <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
               <span className="text-slate-600 font-medium">Standard Consultation Fee (₹):</span>
-              <span className="text-base font-extrabold text-slate-900">₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
+              <span className="text-base font-extrabold text-slate-900">₹{String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -602,7 +602,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Consultation Fee (₹):</span>
-                    <span className="font-bold text-slate-800">₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
+                    <span className="font-bold text-slate-800">₹{String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-slate-200">
                     <span className="text-slate-500">Transaction Status:</span>
@@ -671,7 +671,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-amber-900/70">Amount Due (₹):</span>
-                    <span className="font-bold text-slate-800">₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
+                    <span className="font-bold text-slate-800">₹{String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-amber-200">
                     <span className="text-amber-900/70">Resolution:</span>
@@ -798,7 +798,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   </div>
                   <div className="pt-2 border-t border-slate-200 flex justify-between font-extrabold text-sm text-slate-900">
                     <span>Total Amount Due (₹):</span>
-                    <span className="text-blue-700">₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
+                    <span className="text-blue-700">₹{String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
                   </div>
                 </div>
 
@@ -935,7 +935,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                           <span>Scan with Any UPI Application</span>
                         </div>
                         <p className="text-[11px] text-slate-600">
-                          Open Google Pay, PhonePe, Paytm, BHIM, or your bank app to scan and authorize <strong>₹${String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong>.
+                          Open Google Pay, PhonePe, Paytm, BHIM, or your bank app to scan and authorize <strong>₹{String(doctor.consultationFee).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong>.
                         </p>
                         <div className="flex items-center gap-2 pt-1">
                           <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded font-mono text-[10px] font-semibold">
@@ -1059,7 +1059,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 Payment Successful & Consultation Confirmed!
               </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Your payment of <strong>₹${String(confirmedApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong> via <strong>{confirmedApt.paymentMethod}</strong> has been successfully authorized and your video appointment slot is locked.
+                Your payment of <strong>₹{String(confirmedApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong> via <strong>{confirmedApt.paymentMethod}</strong> has been successfully authorized and your video appointment slot is locked.
               </p>
             </div>
 
@@ -1088,7 +1088,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
               <div className="flex justify-between pt-2 border-t border-slate-200">
                 <span className="text-slate-500 font-semibold">Total Paid:</span>
-                <span className="font-extrabold text-emerald-700 text-sm">₹${String(confirmedApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
+                <span className="font-extrabold text-emerald-700 text-sm">₹{String(confirmedApt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</span>
               </div>
             </div>
 

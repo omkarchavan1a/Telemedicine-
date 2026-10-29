@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   TrendingUp,
-  DollarSign,
+  IndianRupee,
   Users,
   Star,
   CheckCircle2,
@@ -114,7 +114,7 @@ export const DoctorAnalytics: React.FC = () => {
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="text-xs text-slate-500 font-medium">Net Doctor Earnings (₹, Disbursed)</div>
             <div className="text-2xl font-extrabold text-slate-900 mt-0.5">
-              ₹${String(netEarnings).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              ₹{String(netEarnings).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
             </div>
             <div className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1 font-semibold">
               <TrendingUp className="w-3.5 h-3.5" />
@@ -162,7 +162,7 @@ export const DoctorAnalytics: React.FC = () => {
             return (
               <div key={d.label} className="flex flex-col items-center gap-2 h-full justify-end group">
                 <div className="text-[11px] font-bold text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                  ₹${String(d.earnings).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  ₹{String(d.earnings).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 </div>
                 <div
                   style={{ height: `${heightPercent}%` }}

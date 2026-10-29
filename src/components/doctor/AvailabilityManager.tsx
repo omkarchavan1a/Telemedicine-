@@ -4,7 +4,7 @@ import { localDateKey } from '../../utils/timeSlots';
 import {
   Calendar,
   Clock,
-  DollarSign,
+  IndianRupee,
   Save,
   Check,
   Plus,
@@ -216,7 +216,7 @@ export const AvailabilityManager: React.FC = () => {
           {/* Consultation Fee Setting */}
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-3">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-emerald-600" />
+              <IndianRupee className="w-4 h-4 text-emerald-600" />
               Standard Consultation Fee (₹)
             </h3>
 
@@ -233,7 +233,7 @@ export const AvailabilityManager: React.FC = () => {
                   className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-extrabold text-slate-900 font-mono"
                 />
               </div>
-              <span className="text-xs text-slate-500">USD per session</span>
+              <span className="text-xs text-slate-500 font-semibold">INR (₹) per session</span>
             </div>
             <p className="text-[11px] text-slate-400">
               Patients pay this fee upfront when confirming appointment slots.

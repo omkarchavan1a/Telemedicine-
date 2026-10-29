@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Appointment } from '../../types';
 import { downloadDoctorVisitSummaryPdf } from '../../utils/pdfReport';
 import { JpgAvatarUploader } from '../common/JpgAvatarUploader';
+import { getAppointmentScheduleInfo } from '../../utils/timeSlots';
 import {
   Users,
   Video,
   FileText,
   Clock,
   Calendar,
-  DollarSign,
+  IndianRupee,
   Star,
   CheckCircle2,
   AlertCircle,
@@ -21,6 +22,8 @@ import {
   ShieldCheck,
   Pencil,
   Save,
+  Sparkles,
+  PlayCircle,
 } from 'lucide-react';
 
 export const DoctorDashboard: React.FC = () => {
@@ -32,6 +35,7 @@ export const DoctorDashboard: React.FC = () => {
     doctors,
     authDoctor,
     setActiveVideoAppointment,
+    updateAppointmentStatus,
     setViewingPrescription,
     prescriptions,
     setDoctorPrescriptionTargetApt,
@@ -105,6 +109,12 @@ export const DoctorDashboard: React.FC = () => {
     );
   }
 
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Filter appointments for active doctor
   const doctorAppointments = appointments.filter(
     (apt) =>
@@ -112,9 +122,14 @@ export const DoctorDashboard: React.FC = () => {
       apt.doctorName.toLowerCase().includes(activeDoctor.name.toLowerCase().split(',')[0])
   );
 
-  const waitingOrActive = doctorAppointments.find(
-    (a) => a.status === 'in_waiting_room' || a.status === 'in_consultation'
-  );
+  const waitingOrActive = doctorAppointments.find((a) => {
+    if (a.status === 'in_waiting_room' || a.status === 'in_consultation') return true;
+    if (a.status === 'scheduled') {
+      const sch = getAppointmentScheduleInfo(a.date, a.timeSlot, 30, now);
+      return sch.isLiveNow || sch.isApproaching;
+    }
+    return false;
+  });
 
   const completedToday = doctorAppointments.filter((a) => a.status === 'completed');
   const totalEarnings = doctorAppointments
@@ -420,10 +435,10 @@ export const DoctorDashboard: React.FC = () => {
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="text-xs text-slate-500 font-medium">Gross Billings</div>
             <div className="text-2xl font-extrabold text-slate-900 mt-0.5">
-              ${totalEarnings}.00
+              ₹{totalEarnings}.00
             </div>
             <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 font-medium">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+              <IndianRupee className="w-3.5 h-3.5 text-emerald-600" />
               <span>Direct patient fees</span>
             </div>
           </div>
@@ -439,36 +454,72 @@ export const DoctorDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Active Call Alert if a patient is in waiting room */}
-      {waitingOrActive && (
-        <div className="bg-rose-50 border border-rose-200 rounded-3xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center animate-pulse shrink-0">
-              <Video className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-rose-200 text-rose-800 rounded-full text-[11px] font-bold uppercase tracking-wider mb-1">
-                Patient Waiting In Room
-              </div>
-              <h3 className="text-base font-bold text-slate-900">
-                {waitingOrActive.patientName} is ready for consultation
-              </h3>
-              <p className="text-xs text-slate-600">
-                Reason: {waitingOrActive.reason} · Slot: {waitingOrActive.date} at {waitingOrActive.timeSlot}
-              </p>
-            </div>
-          </div>
+      {/* Active Call Alert if a patient is in waiting room or scheduled time arrived */}
+      {waitingOrActive && (() => {
+        const sch = getAppointmentScheduleInfo(waitingOrActive.date, waitingOrActive.timeSlot, 30, now);
+        const isWaiting = waitingOrActive.status === 'in_waiting_room';
+        const isLive = sch.isLiveNow || waitingOrActive.status === 'in_consultation';
 
-          <button
-            id="doctor-join-waiting-room-btn"
-            onClick={() => setActiveVideoAppointment(waitingOrActive)}
-            className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center justify-center gap-2 shrink-0"
+        return (
+          <div
+            className={`border rounded-3xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${
+              isLive
+                ? 'bg-emerald-50/90 border-emerald-300 ring-2 ring-emerald-200'
+                : 'bg-rose-50 border-rose-200'
+            }`}
           >
-            <Video className="w-4 h-4" />
-            <span>Admit Patient & Start Call</span>
-          </button>
-        </div>
-      )}
+            <div className="flex items-center gap-4">
+              <div
+                className={`w-12 h-12 rounded-2xl text-white flex items-center justify-center animate-pulse shrink-0 ${
+                  isLive ? 'bg-emerald-600' : 'bg-rose-600'
+                }`}
+              >
+                <Video className="w-6 h-6" />
+              </div>
+              <div>
+                <div
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider mb-1 ${
+                    isLive
+                      ? 'bg-emerald-200 text-emerald-950 border border-emerald-300'
+                      : 'bg-rose-200 text-rose-800'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
+                  {isLive
+                    ? 'Scheduled Time Arrived · Live Consultation Now'
+                    : isWaiting
+                    ? 'Patient Waiting In Room'
+                    : `Starts in ${sch.countdownFormatted}`}
+                </div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {waitingOrActive.patientName} — Consultation Ready
+                </h3>
+                <p className="text-xs text-slate-600">
+                  Reason: {waitingOrActive.reason} · Slot: {waitingOrActive.date} at {waitingOrActive.timeSlot} ({sch.countdownFormatted})
+                </p>
+              </div>
+            </div>
+
+            <button
+              id="doctor-join-waiting-room-btn"
+              onClick={() => {
+                if (waitingOrActive.status === 'scheduled') {
+                  updateAppointmentStatus(waitingOrActive.id, 'in_consultation');
+                }
+                setActiveVideoAppointment(waitingOrActive);
+              }}
+              className={`px-6 py-2.5 text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center justify-center gap-2 shrink-0 ${
+                isLive
+                  ? 'bg-emerald-600 hover:bg-emerald-700 animate-pulse ring-2 ring-emerald-300'
+                  : 'bg-rose-600 hover:bg-rose-700'
+              }`}
+            >
+              <Video className="w-4 h-4" />
+              <span>{isLive ? 'Start Live Video Call' : 'Admit Patient & Start Call'}</span>
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Consultation Queue List */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
@@ -519,6 +570,8 @@ export const DoctorDashboard: React.FC = () => {
             {filteredQueue.map((apt) => {
               const rx = prescriptions.find((p) => p.appointmentId === apt.id);
               const isWaiting = apt.status === 'in_waiting_room';
+              const isJoinable = apt.status === 'in_waiting_room' || apt.status === 'scheduled' || apt.status === 'in_consultation';
+              const schedule = getAppointmentScheduleInfo(apt.date, apt.timeSlot, 30, now);
 
               return (
                 <div
@@ -527,6 +580,8 @@ export const DoctorDashboard: React.FC = () => {
                   className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                     isWaiting
                       ? 'bg-amber-50/50 border-amber-300 ring-1 ring-amber-200'
+                      : schedule.isLiveNow && isJoinable
+                      ? 'bg-emerald-50/40 border-emerald-300 ring-1 ring-emerald-200'
                       : 'bg-white border-slate-200 hover:border-blue-200'
                   }`}
                 >
@@ -548,18 +603,48 @@ export const DoctorDashboard: React.FC = () => {
                           Scheduled
                         </span>
                       )}
+
+                      {/* Schedule status badge */}
+                      {isJoinable && (
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${schedule.badgeStyle}`}>
+                          <Clock className="w-3 h-3" />
+                          <span>{schedule.badgeText}</span>
+                        </span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs text-slate-500">
+                    <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
                       <span className="flex items-center gap-1 font-medium text-slate-700">
                         <Calendar className="w-3.5 h-3.5 text-blue-600" />
                         {apt.date} · {apt.timeSlot}
                       </span>
                       <span>•</span>
                       <span className="text-slate-600">
-                        Fee: <strong>₹${String(apt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong> ({apt.paymentStatus})
+                        Fee: <strong>₹{String(apt.amount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</strong> ({apt.paymentStatus})
                       </span>
                     </div>
+
+                    {/* Schedule countdown text */}
+                    {isJoinable && (
+                      <div className="pt-0.5">
+                        {schedule.isLiveNow ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                            <span>Schedule Time Arrived: Live Video Slot Open ({schedule.countdownFormatted})</span>
+                          </div>
+                        ) : schedule.isApproaching ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300">
+                            <Sparkles className="w-3 h-3 text-amber-700" />
+                            <span>Starts in {schedule.countdownFormatted}</span>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>Scheduled to start in {schedule.countdownFormatted}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <p className="text-xs text-slate-700">
                       <strong className="text-slate-900">Symptoms / Concern:</strong> {apt.reason}
@@ -575,17 +660,47 @@ export const DoctorDashboard: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
                     {/* Enter Video Call */}
                     {(apt.status === 'in_waiting_room' || apt.status === 'scheduled') && (
-                      <button
-                        onClick={() => setActiveVideoAppointment(apt)}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-xs flex items-center gap-1.5 transition-colors ${
-                          isWaiting
-                            ? 'bg-rose-600 hover:bg-rose-700'
-                            : 'bg-blue-600 hover:bg-blue-700'
-                        }`}
-                      >
-                        <Video className="w-3.5 h-3.5" />
-                        <span>{isWaiting ? 'Admit Patient Now' : 'Join Video Room'}</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            if (apt.status === 'scheduled') {
+                              updateAppointmentStatus(apt.id, 'in_consultation');
+                            }
+                            setActiveVideoAppointment(apt);
+                          }}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-xs flex items-center gap-1.5 transition-colors ${
+                            schedule.isLiveNow
+                              ? 'bg-emerald-600 hover:bg-emerald-700 animate-pulse ring-2 ring-emerald-300'
+                              : isWaiting
+                              ? 'bg-rose-600 hover:bg-rose-700'
+                              : 'bg-blue-600 hover:bg-blue-700'
+                          }`}
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>
+                            {schedule.isLiveNow
+                              ? 'Start Scheduled Call'
+                              : isWaiting
+                              ? 'Admit Patient Now'
+                              : 'Open Video Room'}
+                          </span>
+                        </button>
+
+                        {/* Early start option */}
+                        {schedule.isFuture && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateAppointmentStatus(apt.id, 'in_consultation');
+                              setActiveVideoAppointment(apt);
+                            }}
+                            className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold underline"
+                            title="Start call early ahead of schedule"
+                          >
+                            Start Early
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {/* Write Prescription Button */}
